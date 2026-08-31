@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import { Lock } from "lucide-react";
 import Link from "next/link";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/admin";
   const [email, setEmail] = useState("");
@@ -21,18 +20,36 @@ function LoginForm() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const res = await signIn("admin-credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (res?.error) {
-      setError("Invalid admin credentials");
-      return;
+
+    try {
+      const res = await signIn("admin-credentials", {
+        email: email.trim(),
+        password,
+        redirect: false,
+        callbackUrl,
+      });
+
+      if (!res) {
+        setError("Sign-in failed. Check NEXTAUTH_SECRET is set on Vercel.");
+        setLoading(false);
+        return;
+      }
+
+      if (res.error) {
+        setError(
+          "Invalid admin credentials. Use the exact ADMIN_EMAIL and ADMIN_PASSWORD from Vercel env."
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Full page navigation so the session cookie is sent on the next request
+      // (client router.push often races the cookie and bounces back to login)
+      window.location.assign(res.url || callbackUrl || "/admin");
+    } catch {
+      setError("Network error during sign-in. Try again.");
+      setLoading(false);
     }
-    router.push(callbackUrl);
-    router.refresh();
   };
 
   return (

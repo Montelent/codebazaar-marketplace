@@ -31,6 +31,25 @@ enum LicenseType {
   EXTENDED
 }
 
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+  BANK_TRANSFER
+  MANUAL
+  CRYPTO
+}
+
 model User {
   id              String         @id @default(cuid())
   username        String         @unique
@@ -242,4 +261,84 @@ model PlatformStat {
   totalItemsSold    Int      @default(0)
   communityEarnings Decimal  @default(0) @db.Decimal(14, 2)
   updatedAt         DateTime @updatedAt
+}
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  group     String   @default("general")
+  updatedAt DateTime @updatedAt
+}
+
+model CmsPage {
+  id             String     @id @default(cuid())
+  title          String
+  slug           String     @unique
+  content        String     @db.Text
+  excerpt        String?
+  status         PageStatus @default(DRAFT)
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String?
+  showInFooter   Boolean    @default(false)
+  showInHeader   Boolean    @default(false)
+  sortOrder      Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model BlogCategory {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  posts       BlogPost[]
+  createdAt   DateTime   @default(now())
+}
+
+model BlogPost {
+  id             String        @id @default(cuid())
+  title          String
+  slug           String        @unique
+  content        String        @db.Text
+  excerpt        String?
+  coverImage     String?
+  status         PostStatus    @default(DRAFT)
+  categoryId     String?
+  category       BlogCategory? @relation(fields: [categoryId], references: [id])
+  authorName     String        @default("CodeBazaar")
+  seoTitle       String?
+  seoDescription String?
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+model PaymentMethod {
+  id           String          @id @default(cuid())
+  provider     PaymentProvider
+  name         String
+  enabled      Boolean         @default(false)
+  isManual     Boolean         @default(false)
+  sortOrder    Int             @default(0)
+  config       Json            @default("{}")
+  secrets      Json            @default("{}")
+  instructions String?         @db.Text
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([provider, name])
+}
+
+model MediaAsset {
+  id        String   @id @default(cuid())
+  url       String
+  filename  String
+  mimeType  String?
+  size      Int?
+  alt       String?
+  createdAt DateTime @default(now())
 }

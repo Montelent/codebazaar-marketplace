@@ -110,21 +110,21 @@ model Item {
   slug               String           @unique
   title              String
   description        String
-  features           String[]
+  features           Json             @default("[]")
   authorId           String
   author             User             @relation(fields: [authorId], references: [id])
   categoryId         String
   category           Category         @relation(fields: [categoryId], references: [id])
-  tags               String[]
-  compatibleWith     String[]
-  filesIncluded      String[]
-  compatibleBrowsers String[]
+  tags               Json             @default("[]")
+  compatibleWith     Json             @default("[]")
+  filesIncluded      Json             @default("[]")
+  compatibleBrowsers Json             @default("[]")
   regularPrice       Decimal          @db.Decimal(10, 2)
   extendedPrice      Decimal          @db.Decimal(10, 2)
   salePriceRegular   Decimal?         @db.Decimal(10, 2)
   salePriceExtended  Decimal?         @db.Decimal(10, 2)
   thumbnailUrl       String
-  galleryUrls        String[]
+  galleryUrls        Json             @default("[]")
   previewUrl         String?
   demoUrl            String?
   status             ItemStatus       @default(PENDING)

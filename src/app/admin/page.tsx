@@ -1,14 +1,23 @@
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { MOCK_ITEMS } from "@/lib/mock-data";
 import { formatPrice, formatCompact } from "@/lib/utils";
 import { Package, DollarSign, ShoppingBag, Users } from "lucide-react";
+import { redirect } from "next/navigation";
+import { AdminSignOut } from "@/components/admin/sign-out-button";
 
 export const metadata = {
   title: "Admin",
   description: "CodeBazaar store administration",
 };
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user || session.user.role !== "ADMIN") {
+    redirect("/admin/login");
+  }
+
   const totalSales = MOCK_ITEMS.reduce((s, i) => s + i.salesCount, 0);
   const totalItems = MOCK_ITEMS.length;
   const avgRating =
@@ -20,12 +29,21 @@ export default function AdminPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Admin Dashboard</h1>
           <p className="text-sm text-slate-500">
-            Single-vendor store · CodeBazaar is the only seller
+            Signed in as {session.user.email} · Single-vendor store
           </p>
         </div>
-        <Link href="/" className="text-sm font-medium text-emerald-600 hover:underline">
-          ← View storefront
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/" className="text-sm font-medium text-emerald-600 hover:underline">
+            View storefront
+          </Link>
+          <AdminSignOut />
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <strong>Backend status:</strong> Auth is live. Catalog uses demo data until you run{" "}
+        <code className="rounded bg-amber-100 px-1">prisma db push</code> and seed against Neon.
+        Admin API: <code className="rounded bg-amber-100 px-1">GET/POST /api/admin/products</code>
       </div>
 
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -64,7 +82,7 @@ export default function AdminPage() {
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h2 className="font-semibold text-slate-900">Products</h2>
-          <span className="text-xs text-slate-500">Managed by store admin only</span>
+          <span className="text-xs text-slate-500">Admin-only catalog</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -104,10 +122,6 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
-
-      <p className="mt-6 text-center text-xs text-slate-400">
-        Single-vendor mode: no public seller accounts. All products belong to CodeBazaar.
-      </p>
     </div>
   );
 }

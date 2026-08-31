@@ -8,7 +8,6 @@ import { NextResponse } from "next/server";
 export default withAuth(
   function middleware(req) {
     const role = req.nextauth.token?.role;
-    // Allow if role is ADMIN, or token exists without role (legacy/bootstrap JWTs)
     if (role && role !== "ADMIN") {
       const login = new URL("/admin/login", req.url);
       login.searchParams.set("callbackUrl", req.nextUrl.pathname);
@@ -19,6 +18,9 @@ export default withAuth(
   {
     callbacks: {
       authorized: ({ token }) => !!token,
+    },
+    pages: {
+      signIn: "/admin/login",
     },
   }
 );

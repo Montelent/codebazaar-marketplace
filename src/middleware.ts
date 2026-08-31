@@ -1,34 +1,35 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
+/**
+ * Protect admin UI + admin APIs only.
+ * /admin/login is intentionally NOT in the matcher to avoid redirect loops.
+ */
 export default withAuth(
   function middleware(req) {
-    const role = req.nextauth.token?.role;
-    const path = req.nextUrl.pathname;
-
-    if (path.startsWith("/admin") && !path.startsWith("/admin/login")) {
-      if (role !== "ADMIN") {
-        const url = new URL("/admin/login", req.url);
-        url.searchParams.set("callbackUrl", path);
-        return NextResponse.redirect(url);
-      }
+    // Token exists (authorized passed), but must be ADMIN
+    if (req.nextauth.token?.role !== "ADMIN") {
+      const login = new URL("/admin/login", req.url);
+      login.searchParams.set("callbackUrl", req.nextUrl.pathname);
+      return NextResponse.redirect(login);
     }
     return NextResponse.next();
   },
   {
     callbacks: {
-      authorized: ({ token, req }) => {
-        const path = req.nextUrl.pathname;
-        if (path.startsWith("/admin/login")) return true;
-        if (path.startsWith("/admin") || path.startsWith("/api/admin")) {
-          return !!token && token.role === "ADMIN";
-        }
-        return true;
-      },
+      // Unauthenticated → withAuth sends user to pages.signIn (/admin/login)
+      authorized: ({ token }) => !!token,
     },
   }
 );
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: [
+    // Exact /admin dashboard
+    "/admin",
+    // Nested admin routes EXCEPT login
+    "/admin/((?!login).*)",
+    // Admin APIs
+    "/api/admin/:path*",
+  ],
 };

@@ -51,8 +51,8 @@ export function Header() {
             <span className="hidden sm:inline">Digital marketplace for code & creatives</span>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/seller/dashboard" className="hover:text-emerald-600">
-              Become a Seller
+            <Link href="/admin" className="hover:text-emerald-600">
+              Admin
             </Link>
             <Link href="/pricing/licenses" className="hidden sm:inline hover:text-emerald-600">
               Licenses
@@ -176,18 +176,6 @@ export function Header() {
                 >
                   {cat.name}
                 </Link>
-                <div className="ml-3 flex flex-col gap-1">
-                  {cat.subs.map((sub) => (
-                    <Link
-                      key={sub}
-                      href={`/category/${cat.slug}/${sub.toLowerCase().replace(/\s+/g, "-")}`}
-                      className="py-1 text-sm text-slate-500"
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      {sub}
-                    </Link>
-                  ))}
-                </div>
               </div>
             ))}
           </nav>

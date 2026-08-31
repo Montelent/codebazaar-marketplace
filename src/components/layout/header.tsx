@@ -30,7 +30,7 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeMega, setActiveMega] = useState<string | null>(null);
-  const itemCount = useCartStore((s) => s.itemCount());
+  const itemCount = useCartStore((s) => s.items.length);
   const router = useRouter();
 
   const handleSearch = (e: React.FormEvent) => {
@@ -92,9 +92,9 @@ export function Header() {
         <div className="ml-auto flex items-center gap-2">
           <Link href="/cart" className="relative rounded-md p-2 hover:bg-slate-100">
             <ShoppingCart className="h-5 w-5 text-slate-700" />
-            {itemCount() > 0 && (
+            {itemCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
-                {itemCount()}
+                {itemCount}
               </span>
             )}
           </Link>

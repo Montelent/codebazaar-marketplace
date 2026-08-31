@@ -1,0 +1,125 @@
+import Link from "next/link";
+import { Search, ArrowRight, Shield, BookOpen, Star } from "lucide-react";
+import { MOCK_ITEMS, CATEGORY_CARDS } from "@/lib/mock-data";
+import { ItemCard } from "@/components/items/item-card";
+import { Button } from "@/components/ui/button";
+
+export default function HomePage() {
+  const featured = MOCK_ITEMS.slice(0, 4);
+  const bestsellers = [...MOCK_ITEMS].sort((a, b) => b.salesCount - a.salesCount).slice(0, 4);
+
+  return (
+    <div className="pb-16">
+      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-800 text-white">
+        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:py-28">
+          <div className="mx-auto max-w-3xl text-center">
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              Code that powers{" "}
+              <span className="text-emerald-400">your next product</span>
+            </h1>
+            <p className="mt-4 text-lg text-slate-300">
+              Discover premium scripts, themes, plugins, and templates from
+              world-class independent creators.
+            </p>
+            <form
+              action="/search"
+              className="mx-auto mt-8 flex max-w-xl overflow-hidden rounded-xl bg-white shadow-lg"
+            >
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input
+                  name="term"
+                  type="search"
+                  placeholder="Search for React dashboards, Laravel shops..."
+                  className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-slate-900 outline-none placeholder:text-slate-400"
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-emerald-600 px-6 font-semibold text-white hover:bg-emerald-700"
+              >
+                Search
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-12">
+        <h2 className="mb-6 text-2xl font-bold text-slate-900">Browse by category</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {CATEGORY_CARDS.map((cat) => (
+            <Link
+              key={cat.slug}
+              href={`/category/${cat.slug}`}
+              className="group rounded-xl border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:shadow-md"
+            >
+              <span className="text-2xl">{cat.icon}</span>
+              <h3 className="mt-2 font-semibold text-slate-900 group-hover:text-emerald-700">
+                {cat.name}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 line-clamp-2">{cat.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-white py-12">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-slate-900">Featured items</h2>
+            <Link href="/search" className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:underline">
+              View all <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {featured.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-12">
+        <h2 className="mb-6 text-2xl font-bold text-slate-900">Weekly bestsellers</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {bestsellers.map((item) => (
+            <ItemCard key={item.id} item={item} />
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-white py-12">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 sm:grid-cols-3">
+          <div className="text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+              <Star className="h-6 w-6 text-emerald-600" />
+            </div>
+            <h3 className="mt-4 font-semibold text-slate-900">Home of popular scripts</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Thousands of battle-tested items trusted by developers and agencies.
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+              <BookOpen className="h-6 w-6 text-emerald-600" />
+            </div>
+            <h3 className="mt-4 font-semibold text-slate-900">Clear docs & support</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Every item ships with documentation and author support channels.
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+              <Shield className="h-6 w-6 text-emerald-600" />
+            </div>
+            <h3 className="mt-4 font-semibold text-slate-900">Quality-reviewed creators</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Every submission is reviewed before it reaches the marketplace.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

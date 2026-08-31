@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -119,10 +119,10 @@ model Item {
   compatibleWith     String[]
   filesIncluded      String[]
   compatibleBrowsers String[]
-  regularPrice       Decimal
-  extendedPrice      Decimal
-  salePriceRegular   Decimal?
-  salePriceExtended  Decimal?
+  regularPrice       Decimal          @db.Decimal(10, 2)
+  extendedPrice      Decimal          @db.Decimal(10, 2)
+  salePriceRegular   Decimal?         @db.Decimal(10, 2)
+  salePriceExtended  Decimal?         @db.Decimal(10, 2)
   thumbnailUrl       String
   galleryUrls        String[]
   previewUrl         String?
@@ -153,7 +153,7 @@ model Order {
   buyerId   String
   buyer     User        @relation(fields: [buyerId], references: [id])
   items     OrderItem[]
-  total     Decimal
+  total     Decimal     @db.Decimal(10, 2)
   status    OrderStatus @default(PENDING)
   stripeId  String?
   createdAt DateTime    @default(now())
@@ -167,7 +167,7 @@ model OrderItem {
   itemId      String
   item        Item        @relation(fields: [itemId], references: [id])
   licenseType LicenseType
-  price       Decimal
+  price       Decimal     @db.Decimal(10, 2)
 }
 
 model Review {
@@ -240,6 +240,6 @@ model PopularSearch {
 model PlatformStat {
   id                String   @id @default("global")
   totalItemsSold    Int      @default(0)
-  communityEarnings Decimal  @default(0)
+  communityEarnings Decimal  @default(0) @db.Decimal(14, 2)
   updatedAt         DateTime @updatedAt
 }

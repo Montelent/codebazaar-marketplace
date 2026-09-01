@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import Link from "next/link";
 import { Search, ArrowRight, Shield, BookOpen, Star } from "lucide-react";
 import { MOCK_ITEMS, CATEGORY_CARDS } from "@/lib/mock-data";

@@ -164,7 +164,7 @@ export async function POST(req: Request) {
         ok: true,
         simulated: true,
         override: true,
-        message: "Product override saved (Item table may need prisma db push)",
+        message: "Product accepted (DB table may need prisma db push)",
         error: message,
         item: { id: overrideId, title: data.title, slug: data.slug },
       },
@@ -210,22 +210,21 @@ export async function PUT(req: Request) {
     categorySlug: body.categorySlug,
   };
 
+  // Never block admin UI if SiteSetting table is missing
+  let dbOverrideOk = true;
   try {
-    await saveOverride(String(body.id), overridePayload);
+    const saved = await saveOverride(String(body.id), overridePayload);
     if (body.slug) {
       await saveOverride(String(body.slug), {
         ...overridePayload,
         id: String(body.slug),
       });
     }
-  } catch (e) {
-    return NextResponse.json(
-      {
-        error: e instanceof Error ? e.message : "Could not save product",
-        hint: "Run prisma db push so SiteSetting can store product overrides",
-      },
-      { status: 503 }
-    );
+    if (saved && (saved as { _dbUnavailable?: boolean })._dbUnavailable) {
+      dbOverrideOk = false;
+    }
+  } catch {
+    dbOverrideOk = false;
   }
 
   try {
@@ -250,14 +249,20 @@ export async function PUT(req: Request) {
               : "PENDING",
       },
     });
-    return NextResponse.json({ item, override: true });
+    return NextResponse.json({
+      item,
+      override: true,
+      clientFallback: !dbOverrideOk,
+    });
   } catch {
-    // overridePayload already includes id — do not spread id twice
     return NextResponse.json({
       ok: true,
       override: true,
+      clientFallback: !dbOverrideOk,
       item: overridePayload,
-      message: "Saved product override — storefront will show Free / updated fields",
+      message: dbOverrideOk
+        ? "Saved product override — Free / edits will show on the storefront"
+        : "Saved. Browser will apply Free/edits immediately. For permanent multi-device storage run: npx prisma db push",
     });
   }
 }

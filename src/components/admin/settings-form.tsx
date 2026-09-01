@@ -3,30 +3,24 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CKEditorField } from "@/components/editor/ck-editor";
 
 type Props = {
   title: string;
   description?: string;
   initial: Record<string, unknown>;
-  fields: {
-    key: string;
-    label: string;
-    type?: "text" | "textarea" | "number" | "checkbox" | "url";
-    help?: string;
-  }[];
+  fields: { key: string; label: string; type?: "text" | "textarea" | "number" | "checkbox" | "url"; help?: string }[];
 };
 
 export function SettingsForm({ title, description, initial, fields }: Props) {
   const [values, setValues] = useState<Record<string, unknown>>({ ...initial });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-
   const set = (key: string, v: unknown) => setValues((prev) => ({ ...prev, [key]: v }));
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setMsg("");
+    setSaving(true); setMsg("");
     const res = await fetch("/api/admin/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -34,10 +28,7 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) {
-      setMsg(data.hint || data.error || "Save failed — run prisma db push if tables are missing");
-      return;
-    }
+    if (!res.ok) { setMsg(data.hint || data.error || "Save failed"); return; }
     setMsg("Saved successfully");
   }
 
@@ -65,7 +56,7 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
             return (
               <div key={f.key}>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
-                <textarea className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm" rows={4} value={String(val ?? "")} onChange={(e) => set(f.key, e.target.value)} />
+                <CKEditorField value={String(val ?? "")} onChange={(html) => set(f.key, html)} minHeight={160} placeholder={f.label} />
                 {f.help && <p className="mt-1 text-xs text-slate-500">{f.help}</p>}
               </div>
             );
@@ -78,11 +69,7 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
             </div>
           );
         })}
-        {msg && (
-          <p className={`rounded px-3 py-2 text-sm ${
-            msg.includes("fail") || msg.includes("push") ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-800"
-          }`}>{msg}</p>
-        )}
+        {msg && <p className={`rounded px-3 py-2 text-sm ${msg.includes("fail") ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-800"}`}>{msg}</p>}
         <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
       </div>
     </form>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, ShoppingCart, FolderTree, Settings,
-  ExternalLink, Newspaper, FileText,
+  ExternalLink, Newspaper, FileText, Users, UserCircle,
 } from "lucide-react";
 
 const NAV = [
@@ -12,6 +12,8 @@ const NAV = [
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/categories", label: "Categories", icon: FolderTree },
+  { href: "/admin/authors", label: "Authors & Editors", icon: UserCircle },
+  { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/pages", label: "Pages", icon: FileText },
   {
@@ -21,7 +23,8 @@ const NAV = [
       { href: "/admin/settings", label: "General" },
       { href: "/admin/settings/homepage", label: "Homepage" },
       { href: "/admin/settings/header-footer", label: "Header & Footer" },
-      { href: "/admin/settings/seo", label: "SEO" },
+      { href: "/admin/settings/seo", label: "Technical SEO" },
+      { href: "/admin/settings/schema", label: "Schema markup" },
       { href: "/admin/settings/payments", label: "Payments" },
     ],
   },

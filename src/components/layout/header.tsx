@@ -125,8 +125,8 @@ export function Header() {
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <Link href="/cart" className="relative rounded-md p-2 hover:bg-slate-100" aria-label="Cart">
             <ShoppingCart className="h-5 w-5 text-slate-700" />
-            {itemCount() > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">{itemCount()}</span>
+            {itemCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">{itemCount}</span>
             )}
           </Link>
           <div className="relative" ref={accountRef}>

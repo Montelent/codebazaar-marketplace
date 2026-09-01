@@ -12,13 +12,13 @@ export default function AdminProductsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Products</h1>
-          <p className="text-sm text-slate-500">Manage marketplace items · Regular & Extended licensing</p>
+          <p className="text-sm text-slate-500">Manage marketplace items · Regular & Extended · Free or paid</p>
         </div>
         <Link href="/admin/products/new">
           <Button><Plus className="h-4 w-4" /> Add product</Button>
         </Link>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
@@ -45,7 +45,10 @@ export default function AdminProductsPage() {
                 <td className="px-4 py-3">{formatCompact(item.salesCount)}</td>
                 <td className="px-4 py-3">{item.ratingAvg.toFixed(1)}</td>
                 <td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Live</span></td>
-                <td className="px-4 py-3"><Link href={`/item/${item.slug}/${item.id}`} className="text-xs font-medium text-emerald-600 hover:underline">View</Link></td>
+                <td className="space-x-2 px-4 py-3">
+                  <Link href={`/admin/products/${item.id}/edit`} className="text-xs font-medium text-emerald-600 hover:underline">Edit</Link>
+                  <Link href={`/item/${item.slug}/${item.id}`} className="text-xs text-slate-500 hover:underline">View</Link>
+                </td>
               </tr>
             ))}
           </tbody>

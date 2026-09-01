@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAllSettings } from "@/lib/settings";
 
-/** Public settings for storefront (header, homepage appearance, nav). */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   const all = await getAllSettings();
   const publicKeys = [
@@ -13,6 +15,10 @@ export async function GET() {
     "nav.main",
     "nav.utility",
     "nav.categories",
+    "footer.aboutText",
+    "footer.columns",
+    "footer.social",
+    "footer.copyright",
     "homepage.heroTitle",
     "homepage.heroHighlight",
     "homepage.heroSubtitle",
@@ -26,10 +32,15 @@ export async function GET() {
     "homepage.buttonColor",
     "homepage.buttonTextColor",
     "homepage.heroSearchPlaceholder",
+    "homepage.statsSold",
+    "homepage.statsEarnings",
   ];
   const settings: Record<string, unknown> = {};
   for (const k of publicKeys) {
     if (k in all) settings[k] = all[k];
   }
-  return NextResponse.json({ settings });
+  return NextResponse.json(
+    { settings },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }

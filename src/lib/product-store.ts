@@ -54,17 +54,24 @@ export async function saveOverride(id: string, data: ProductOverride) {
     updatedAt: new Date().toISOString(),
     createdAt: prev.createdAt || new Date().toISOString(),
   };
-  if (data.isFree) {
+  if (data.isFree || Number(data.regularPrice) === 0) {
     all[id].regularPrice = 0;
     all[id].extendedPrice = 0;
     all[id].salePriceRegular = null;
     all[id].isFree = true;
   }
-  await prisma.siteSetting.upsert({
-    where: { key: OVERRIDES_KEY },
-    update: { value: all as object, group: "products" },
-    create: { key: OVERRIDES_KEY, value: all as object, group: "products" },
-  });
+  try {
+    await prisma.siteSetting.upsert({
+      where: { key: OVERRIDES_KEY },
+      update: { value: all as object, group: "products" },
+      create: { key: OVERRIDES_KEY, value: all as object, group: "products" },
+    });
+  } catch (e) {
+    console.error("saveOverride DB error (run prisma db push):", e);
+    return { ...all[id], _dbUnavailable: true } as ProductOverride & {
+      _dbUnavailable?: boolean;
+    };
+  }
   return all[id];
 }
 

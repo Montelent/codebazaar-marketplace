@@ -1,29 +1,103 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
 import { Download } from "lucide-react";
-import { usePurchasesStore } from "@/lib/purchases-store";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+type OwnedItem = {
+  id: string;
+  itemId: string;
+  slug: string;
+  title: string;
+  thumbnailUrl: string;
+  licenseType: string;
+  price: number;
+  purchasedAt: string;
+  status?: string;
+};
 
 export default function DownloadsPage() {
-  const items = usePurchasesStore((s) => s.items);
+  const { data: session, status } = useSession();
+  const [items, setItems] = useState<OwnedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [emailLookup, setEmailLookup] = useState("");
+
+  async function load(email?: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const q = email ? `?email=${encodeURIComponent(email)}` : "";
+      const res = await fetch(`/api/orders${q}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Could not load downloads from database");
+        setItems([]);
+        return;
+      }
+      setItems(data.items || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (status === "loading") return;
+    if (session?.user?.email) load();
+    else setLoading(false);
+  }, [session, status]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Downloads</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Download source files for items you own. Re-download anytime while your license is valid.
+        Loaded from the database — available on any device with the same account/email.
       </p>
 
-      {items.length === 0 ? (
+      {!session?.user && (
+        <div className="mt-4 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm text-slate-600">
+            <Link href="/sign-in" className="font-medium text-emerald-700 hover:underline">
+              Sign in
+            </Link>{" "}
+            or look up by the email used at checkout:
+          </p>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (emailLookup.trim()) load(emailLookup.trim());
+            }}
+          >
+            <Input
+              type="email"
+              placeholder="you@email.com"
+              value={emailLookup}
+              onChange={(e) => setEmailLookup(e.target.value)}
+            />
+            <Button type="submit" variant="outline">
+              Load
+            </Button>
+          </form>
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-4 rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>
+      )}
+
+      {loading ? (
+        <p className="mt-8 text-sm text-slate-500">Loading from database…</p>
+      ) : items.length === 0 ? (
         <div className="mt-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-600">
-          No downloads available. Purchase or claim a free item to unlock files.
-          <div className="mt-3">
-            <Link href="/" className="font-medium text-emerald-600 hover:underline">
-              Browse marketplace
-            </Link>
-          </div>
+          No downloads in the database yet. Complete checkout with your email first.
         </div>
       ) : (
         <ul className="mt-6 space-y-3">
@@ -43,8 +117,7 @@ export default function DownloadsPage() {
                   {item.title}
                 </Link>
                 <p className="text-xs text-slate-500">
-                  {item.licenseType} license ·{" "}
-                  {new Date(item.purchasedAt).toLocaleDateString()}
+                  {item.licenseType} · {new Date(item.purchasedAt).toLocaleDateString()}
                 </p>
               </div>
               <button
@@ -52,19 +125,16 @@ export default function DownloadsPage() {
                 onClick={() => {
                   const blob = new Blob(
                     [
-                      `CodeBazaar License\n`,
-                      `Product: ${item.title}\n`,
-                      `License: ${item.licenseType}\n`,
-                      `Purchased: ${item.purchasedAt}\n`,
-                      `\nThank you for your purchase.\n`,
-                      `Replace this with your real ZIP download URL in admin.\n`,
+                      `CodeBazaar License\nProduct: ${item.title}\nLicense: ${item.licenseType}\n`,
+                      `Purchased: ${item.purchasedAt}\nItem ID: ${item.itemId}\n`,
+                      `\nStored in database — valid on any device with this account.\n`,
                     ],
                     { type: "text/plain" }
                   );
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `${item.slug}-${item.licenseType.toLowerCase()}-license.txt`;
+                  a.download = `${item.slug}-license.txt`;
                   a.click();
                   URL.revokeObjectURL(url);
                 }}

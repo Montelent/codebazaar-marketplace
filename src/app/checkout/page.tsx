@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useCartStore } from "@/lib/cart-store";
+import { usePurchasesStore } from "@/lib/purchases-store";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { CheckCircle2 } from "lucide-react";
 export default function CheckoutPage() {
   const items = useCartStore((s) => s.items);
   const clearCart = useCartStore((s) => s.clearCart);
+  const addPurchases = usePurchasesStore((s) => s.addPurchases);
   const total = useMemo(
     () => items.reduce((sum, i) => sum + Number(i.price), 0),
     [items]
@@ -24,6 +26,7 @@ export default function CheckoutPage() {
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [orderItems, setOrderItems] = useState(items);
 
   if (items.length === 0 && !done) {
     return (
@@ -46,15 +49,23 @@ export default function CheckoutPage() {
         </h1>
         <p className="mt-2 text-slate-600">
           {isFree
-            ? "Your free item(s) are available in Downloads."
-            : "We received your order. Check Purchases for license details."}
+            ? "Your free item(s) are in Downloads and Purchases."
+            : "Your licenses are ready. Open Downloads to get your files."}
         </p>
-        <div className="mt-6 flex justify-center gap-3">
+        <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-slate-700">
+          {orderItems.map((i) => (
+            <li key={`${i.itemId}-${i.licenseType}`} className="rounded border bg-slate-50 px-3 py-2">
+              {i.title} · {i.licenseType} ·{" "}
+              {Number(i.price) <= 0 ? "Free" : formatPrice(i.price)}
+            </li>
+          ))}
+        </ul>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Link href="/account/downloads">
             <Button>Go to downloads</Button>
           </Link>
-          <Link href="/">
-            <Button variant="outline">Continue shopping</Button>
+          <Link href="/account/purchases">
+            <Button variant="outline">View purchases</Button>
           </Link>
         </div>
       </div>
@@ -69,10 +80,40 @@ export default function CheckoutPage() {
       return;
     }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    clearCart();
-    setDone(true);
-    setLoading(false);
+    try {
+      const owned = items.map((i) => ({
+        id: `${i.itemId}-${i.licenseType}-${Date.now()}`,
+        itemId: i.itemId,
+        slug: i.slug,
+        title: i.title,
+        thumbnailUrl: i.thumbnailUrl,
+        licenseType: i.licenseType,
+        price: Number(i.price),
+        purchasedAt: new Date().toISOString(),
+        downloadUrl: `/api/download/${i.itemId}`,
+      }));
+      addPurchases(owned);
+      setOrderItems([...items]);
+      try {
+        await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            name: name.trim(),
+            method: isFree ? "free" : method,
+            items: owned,
+            total,
+          }),
+        });
+      } catch {
+        /* client store is enough */
+      }
+      clearCart();
+      setDone(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -93,7 +134,13 @@ export default function CheckoutPage() {
               </div>
               <div>
                 <label className="text-sm font-medium">Email</label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" required />
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1"
+                  required
+                />
               </div>
             </div>
           </div>
@@ -103,24 +150,42 @@ export default function CheckoutPage() {
               <h2 className="font-semibold text-slate-900">Payment method</h2>
               <div className="mt-3 space-y-2">
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
-                  <input type="radio" name="pay" checked={method === "manual"} onChange={() => setMethod("manual")} className="accent-emerald-600" />
+                  <input
+                    type="radio"
+                    name="pay"
+                    checked={method === "manual"}
+                    onChange={() => setMethod("manual")}
+                    className="accent-emerald-600"
+                  />
                   <span className="text-sm">
                     <strong>Manual / bank transfer</strong>
-                    <span className="block text-xs text-slate-500">We confirm payment then unlock downloads</span>
+                    <span className="block text-xs text-slate-500">
+                      We confirm payment then unlock downloads
+                    </span>
                   </span>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
-                  <input type="radio" name="pay" checked={method === "stripe"} onChange={() => setMethod("stripe")} className="accent-emerald-600" />
+                  <input
+                    type="radio"
+                    name="pay"
+                    checked={method === "stripe"}
+                    onChange={() => setMethod("stripe")}
+                    className="accent-emerald-600"
+                  />
                   <span className="text-sm">
                     <strong>Card (Stripe)</strong>
-                    <span className="block text-xs text-slate-500">Requires Stripe keys in Admin → Payments</span>
+                    <span className="block text-xs text-slate-500">
+                      Requires Stripe keys in Admin → Payments
+                    </span>
                   </span>
                 </label>
               </div>
             </div>
           )}
 
-          {error && <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>}
+          {error && (
+            <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>
+          )}
 
           <Button type="submit" className="w-full" size="lg" disabled={loading}>
             {loading

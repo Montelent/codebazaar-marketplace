@@ -13,10 +13,10 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-24 text-center">
-        <ShoppingBag className="h-16 w-16 text-slate-300" />
+      <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-20 text-center">
+        <ShoppingBag className="h-12 w-12 text-slate-300" />
         <h1 className="mt-4 text-2xl font-bold text-slate-900">Your cart is empty</h1>
-        <p className="mt-2 text-slate-500">Browse the store and add items you like.</p>
+        <p className="mt-2 text-slate-500">Browse the marketplace and add items to get started.</p>
         <Link href="/" className="mt-6">
           <Button>Continue shopping</Button>
         </Link>
@@ -25,7 +25,7 @@ export default function CartPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Shopping Cart</h1>
       <div className="mt-8 grid gap-8 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -75,9 +75,11 @@ export default function CartPage() {
               <span>{formatPrice(total)}</span>
             </div>
           </div>
-          <Button className="mt-6 w-full" size="lg" disabled>
-            Checkout (coming soon)
-          </Button>
+          <Link href="/checkout">
+            <Button className="mt-6 w-full" size="lg">
+              Proceed to checkout
+            </Button>
+          </Link>
         </div>
       </div>
     </div>

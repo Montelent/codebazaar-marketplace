@@ -51,95 +51,19 @@ const productSchema = z.object({
 export async function POST(req: Request) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const body = await req.json();
   const parsed = productSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-
   const data = { ...parsed.data };
   if (data.isFree) {
     data.regularPrice = 0;
     data.extendedPrice = 0;
   }
-  const features = data.features ?? [];
-  const tags = data.tags ?? [];
-
-  try {
-    let category = await prisma.category.findFirst({
-      where: { slug: data.categorySlug ?? "javascript" },
-    });
-    if (!category) {
-      category = await prisma.category.create({
-        data: {
-          slug: data.categorySlug ?? "javascript",
-          name: (data.categorySlug ?? "javascript")
-            .split("-")
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(" "),
-        },
-      });
-    }
-
-    let author = await prisma.user.findFirst({ where: { role: "ADMIN" } });
-    if (!author) {
-      author = await prisma.user.create({
-        data: {
-          email: process.env.ADMIN_EMAIL ?? "admin@codebazaar.com",
-          username: "codebazaar",
-          name: "CodeBazaar",
-          role: "ADMIN",
-        },
-      });
-    }
-
-    const item = await prisma.item.create({
-      data: {
-        title: data.title,
-        slug: data.slug,
-        description: data.description || data.title,
-        features,
-        tags,
-        regularPrice: data.regularPrice,
-        extendedPrice: data.extendedPrice,
-        salePriceRegular: data.salePriceRegular ?? null,
-        thumbnailUrl:
-          data.thumbnailUrl || `https://picsum.photos/seed/${data.slug}/640/400`,
-        demoUrl: data.demoUrl || null,
-        status: data.status ?? "APPROVED",
-        authorId: author.id,
-        categoryId: category.id,
-      },
-    });
-
-    try {
-      await saveOverride(item.id, {
-        id: item.id,
-        slug: item.slug,
-        isFree: data.isFree || data.regularPrice === 0,
-        regularPrice: data.regularPrice,
-        extendedPrice: data.extendedPrice,
-        title: data.title,
-      });
-    } catch {
-      /* ignore */
-    }
-
-    return NextResponse.json({ item, permanent: true }, { status: 201 });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "DB error";
-    return NextResponse.json(
-      {
-        ok: true,
-        permanent: false,
-        message: "Could not create in DB — run npx prisma db push",
-        error: message,
-        item: { id: data.slug, title: data.title, slug: data.slug },
-      },
-      { status: 200 }
-    );
-  }
+  const putBody = { id: data.slug, ...data };
+  const fakeReq = { json: async () => putBody } as Request;
+  return PUT(fakeReq);
 }
 
 export async function PUT(req: Request) {
@@ -152,129 +76,127 @@ export async function PUT(req: Request) {
   const isFree = Boolean(body.isFree) || Number(body.regularPrice) === 0;
   const regularPrice = isFree ? 0 : Number(body.regularPrice ?? 0);
   const extendedPrice = isFree ? 0 : Number(body.extendedPrice ?? 0);
-  const salePriceRegular = isFree
-    ? null
-    : body.salePriceRegular != null
-      ? Number(body.salePriceRegular)
-      : null;
-
-  const overridePayload = {
-    id: String(body.id),
-    title: body.title,
-    slug: body.slug,
-    description: body.description,
-    regularPrice,
-    extendedPrice,
-    salePriceRegular,
-    isFree,
-    thumbnailUrl: body.thumbnailUrl,
-    demoUrl: body.demoUrl,
-    features: body.features,
-    licenseFeatures: body.licenseFeatures,
-    requirements: body.requirements,
-    tags: body.tags,
-    attributes: Array.isArray(body.attributes)
-      ? body.attributes.filter(
-          (a: { label: string }) =>
-            !["Last Update", "Created", "Published", "Updated"].includes(a.label)
-        )
-      : undefined,
-    changelog: body.changelog,
-    categorySlug: body.categorySlug,
-  };
+  const salePriceRegular =
+    isFree ? null : body.salePriceRegular != null ? Number(body.salePriceRegular) : null;
+  const slug = String(body.slug || body.id);
+  const title = String(body.title || "Untitled");
+  const description = String(body.description || "");
+  const thumbnailUrl = body.thumbnailUrl || `https://picsum.photos/seed/${slug}/640/400`;
+  const demoUrl = body.demoUrl ? String(body.demoUrl) : null;
+  const featuresJson = JSON.stringify(body.features ?? []);
+  const tagsJson = JSON.stringify(body.tags ?? []);
 
   try {
-    await saveOverride(String(body.id), overridePayload);
-    if (body.slug) {
-      await saveOverride(String(body.slug), {
-        ...overridePayload,
-        id: String(body.slug),
-      });
-    }
+    await saveOverride(String(body.id), {
+      id: String(body.id),
+      title,
+      slug,
+      description,
+      regularPrice,
+      extendedPrice,
+      salePriceRegular,
+      isFree,
+      thumbnailUrl,
+      demoUrl: demoUrl || undefined,
+      features: body.features,
+      tags: body.tags,
+      attributes: body.attributes,
+      categorySlug: body.categorySlug,
+    });
   } catch {
     /* optional */
   }
 
   try {
-    let category = await prisma.category.findFirst({
-      where: { slug: body.categorySlug || "javascript" },
-    });
-    if (!category) {
-      category = await prisma.category.create({
-        data: {
-          slug: body.categorySlug || "javascript",
-          name: String(body.categorySlug || "javascript")
-            .split("-")
-            .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(" "),
-        },
-      });
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "User" ("id", "email", "username", "name", "role", "createdAt", "updatedAt")
+      SELECT gen_random_uuid()::text, '${(process.env.ADMIN_EMAIL ?? "admin@codebazaar.com").replace(/'/g, "")}', 'codebazaar', 'CodeBazaar', 'ADMIN', NOW(), NOW()
+      WHERE NOT EXISTS (SELECT 1 FROM "User" WHERE "role" = 'ADMIN')
+    `);
+
+    const catSlug = String(body.categorySlug || "javascript").replace(/'/g, "");
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Category" ("id", "name", "slug")
+      SELECT gen_random_uuid()::text, '${catSlug}', '${catSlug}'
+      WHERE NOT EXISTS (SELECT 1 FROM "Category" WHERE "slug" = '${catSlug}')
+    `);
+
+    const authors = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM "User" WHERE role = 'ADMIN' LIMIT 1`
+    );
+    const cats = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM "Category" WHERE slug = $1 LIMIT 1`,
+      catSlug
+    );
+    const authorId = authors[0]?.id;
+    const categoryId = cats[0]?.id;
+    if (!authorId || !categoryId) {
+      throw new Error("Missing admin user or category — check DATABASE_URL on Vercel matches Neon");
     }
 
-    let author = await prisma.user.findFirst({ where: { role: "ADMIN" } });
-    if (!author) {
-      author = await prisma.user.create({
-        data: {
-          email: process.env.ADMIN_EMAIL ?? "admin@codebazaar.com",
-          username: "codebazaar",
-          name: "CodeBazaar",
-          role: "ADMIN",
-        },
-      });
-    }
-
-    const slug = String(body.slug || body.id);
-    const existing = await prisma.item.findFirst({
-      where: { OR: [{ id: String(body.id) }, { slug }] },
-    });
-
-    const itemData = {
-      title: String(body.title || "Untitled"),
+    const rows = await prisma.$queryRawUnsafe<Array<{ id: string; slug: string }>>(
+      `
+      INSERT INTO "Item" (
+        "id", "title", "slug", "description", "features", "tags",
+        "regularPrice", "extendedPrice", "salePriceRegular",
+        "thumbnailUrl", "demoUrl", "status", "isFeatured",
+        "authorId", "categoryId", "createdAt", "updatedAt"
+      ) VALUES (
+        gen_random_uuid()::text, $1, $2, $3, $4::jsonb, $5::jsonb,
+        $6, $7, $8,
+        $9, $10, 'APPROVED', false,
+        $11, $12, NOW(), NOW()
+      )
+      ON CONFLICT ("slug") DO UPDATE SET
+        "title" = EXCLUDED."title",
+        "description" = EXCLUDED."description",
+        "features" = EXCLUDED."features",
+        "tags" = EXCLUDED."tags",
+        "regularPrice" = EXCLUDED."regularPrice",
+        "extendedPrice" = EXCLUDED."extendedPrice",
+        "salePriceRegular" = EXCLUDED."salePriceRegular",
+        "thumbnailUrl" = EXCLUDED."thumbnailUrl",
+        "demoUrl" = EXCLUDED."demoUrl",
+        "updatedAt" = NOW()
+      RETURNING id, slug
+      `,
+      title,
       slug,
-      description: String(body.description || ""),
+      description,
+      featuresJson,
+      tagsJson,
       regularPrice,
       extendedPrice,
       salePriceRegular,
-      thumbnailUrl:
-        body.thumbnailUrl || `https://picsum.photos/seed/${slug}/640/400`,
-      demoUrl: body.demoUrl || null,
-      features: body.features ?? [],
-      tags: body.tags ?? [],
-      status: "APPROVED" as const,
-      authorId: author.id,
-      categoryId: category.id,
-    };
-
-    const item = existing
-      ? await prisma.item.update({ where: { id: existing.id }, data: itemData })
-      : await prisma.item.create({ data: itemData });
-
-    try {
-      await saveOverride(String(body.id), {
-        ...overridePayload,
-        id: item.id,
-        slug: item.slug,
-      });
-    } catch {
-      /* ignore */
-    }
+      thumbnailUrl,
+      demoUrl,
+      authorId,
+      categoryId
+    );
 
     return NextResponse.json({
       ok: true,
-      item,
       permanent: true,
+      item: {
+        id: rows[0]?.id || body.id,
+        slug: rows[0]?.slug || slug,
+        title,
+        regularPrice,
+        isFree,
+      },
       message: "Product saved permanently to database",
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "DB error";
+    console.error("Product save DB error:", message);
     return NextResponse.json({
       ok: true,
       permanent: false,
       clientFallback: true,
-      item: overridePayload,
+      item: { id: body.id, slug, title, regularPrice, isFree },
       error: message,
       message:
-        "Could not write to database tables yet. Changes are kept in this browser. Run once: npx prisma db push",
+        "Could not write to database yet. Changes kept in this browser. Error: " + message,
     });
   }
 }

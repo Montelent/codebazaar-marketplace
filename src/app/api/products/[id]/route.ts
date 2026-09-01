@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { getProductDetail } from "@/lib/product-store";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const product = await getProductDetail(id);
+  const url = new URL(req.url);
+  const slug = url.searchParams.get("slug") || undefined;
+  const product = await getProductDetail(id, slug);
   return NextResponse.json({ product });
 }

@@ -60,14 +60,18 @@ export async function saveOverride(id: string, data: ProductOverride) {
     all[id].salePriceRegular = null;
     all[id].isFree = true;
   }
+  if (data.slug) {
+    all[data.slug] = { ...all[id], id: data.slug };
+  }
   try {
+    const jsonValue = JSON.parse(JSON.stringify(all));
     await prisma.siteSetting.upsert({
       where: { key: OVERRIDES_KEY },
-      update: { value: all as object, group: "products" },
-      create: { key: OVERRIDES_KEY, value: all as object, group: "products" },
+      update: { value: jsonValue, group: "products" },
+      create: { key: OVERRIDES_KEY, value: jsonValue, group: "products" },
     });
   } catch (e) {
-    console.error("saveOverride DB error (run prisma db push):", e);
+    console.error("saveOverride DB error:", e);
     return { ...all[id], _dbUnavailable: true } as ProductOverride & {
       _dbUnavailable?: boolean;
     };
@@ -135,20 +139,28 @@ export async function getProductDetail(id: string, slug?: string): Promise<Produ
   let detail = PRODUCT_DETAILS[card.id] ?? detailFromCard(card);
 
   try {
+    // Mock ids ("1","2") differ from Neon cuids — always match by slug
     const db = await prisma.item.findFirst({
-      where: { OR: [{ id }, { slug: slug || undefined }] },
+      where: {
+        OR: [
+          { id },
+          { slug: card.slug },
+          ...(slug ? [{ slug }] : []),
+        ],
+      },
       include: { category: true, author: true },
     });
     if (db) {
       const feat = Array.isArray(db.features) ? (db.features as string[]) : [];
       const tags = Array.isArray(db.tags) ? (db.tags as string[]) : [];
+      const price = Number(db.regularPrice);
       detail = {
         ...detail,
         id: db.id,
         slug: db.slug,
         title: db.title,
         descriptionHtml: db.description,
-        regularPrice: Number(db.regularPrice),
+        regularPrice: price,
         extendedPrice: Number(db.extendedPrice),
         salePriceRegular:
           db.salePriceRegular != null ? Number(db.salePriceRegular) : null,
@@ -185,26 +197,50 @@ export async function getProductDetail(id: string, slug?: string): Promise<Produ
     /* use mock */
   }
 
-  const o = overrides[id] || overrides[card.id];
+  const o =
+    overrides[id] ||
+    overrides[card.id] ||
+    overrides[card.slug] ||
+    (slug ? overrides[slug] : undefined);
   return applyOverride(detail, o);
 }
 
 export async function listProductCards(): Promise<ItemCardData[]> {
   const overrides = await getOverrides();
+  let dbBySlug: Record<string, { regularPrice: number; title: string; thumbnailUrl: string }> = {};
+  try {
+    const rows = await prisma.item.findMany({ take: 200 });
+    for (const r of rows) {
+      dbBySlug[r.slug] = {
+        regularPrice: Number(r.regularPrice),
+        title: r.title,
+        thumbnailUrl: r.thumbnailUrl,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+
   return MOCK_ITEMS.map((item) => {
-    const o = overrides[item.id];
-    if (!o) return item;
-    const isFree = o.isFree === true || Number(o.regularPrice) === 0;
+    const db = dbBySlug[item.slug];
+    const o = overrides[item.id] || overrides[item.slug];
+    const isFree =
+      (o && (o.isFree === true || Number(o.regularPrice) === 0)) ||
+      (db && Number(db.regularPrice) === 0);
     return {
       ...item,
-      title: o.title || item.title,
-      slug: o.slug || item.slug,
-      thumbnailUrl: o.thumbnailUrl || item.thumbnailUrl,
-      regularPrice: isFree ? 0 : Number(o.regularPrice ?? item.regularPrice),
-      extendedPrice: isFree ? 0 : Number(o.extendedPrice ?? item.extendedPrice),
+      title: o?.title || db?.title || item.title,
+      slug: o?.slug || item.slug,
+      thumbnailUrl: o?.thumbnailUrl || db?.thumbnailUrl || item.thumbnailUrl,
+      regularPrice: isFree
+        ? 0
+        : Number(o?.regularPrice ?? db?.regularPrice ?? item.regularPrice),
+      extendedPrice: isFree
+        ? 0
+        : Number(o?.extendedPrice ?? item.extendedPrice),
       salePriceRegular: isFree
         ? null
-        : o.salePriceRegular !== undefined
+        : o?.salePriceRegular !== undefined
           ? o.salePriceRegular
           : item.salePriceRegular,
     };

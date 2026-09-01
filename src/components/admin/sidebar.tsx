@@ -23,6 +23,8 @@ const NAV = [
       { href: "/admin/settings", label: "All settings" },
       { href: "/admin/settings/general", label: "General" },
       { href: "/admin/settings/homepage", label: "Homepage" },
+      { href: "/admin/settings/appearance", label: "Homepage appearance" },
+      { href: "/admin/settings/navigation", label: "Navigation menus" },
       { href: "/admin/settings/header-footer", label: "Header & Footer" },
       { href: "/admin/settings/seo", label: "Technical SEO" },
       { href: "/admin/settings/schema", label: "Schema markup" },

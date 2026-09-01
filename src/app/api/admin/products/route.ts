@@ -65,36 +65,6 @@ export async function POST(req: Request) {
   }
   const features = data.features ?? [];
   const tags = data.tags ?? [];
-  const requirements = Array.isArray(data.requirements)
-    ? data.requirements
-    : typeof data.requirements === "string"
-      ? data.requirements.split("\n").map((s) => s.trim()).filter(Boolean)
-      : [];
-
-  const overrideId = data.slug;
-  try {
-    await saveOverride(overrideId, {
-      id: overrideId,
-      title: data.title,
-      slug: data.slug,
-      description: data.description,
-      regularPrice: data.regularPrice,
-      extendedPrice: data.extendedPrice,
-      salePriceRegular: data.salePriceRegular ?? null,
-      isFree: data.isFree || data.regularPrice === 0,
-      thumbnailUrl: data.thumbnailUrl,
-      demoUrl: data.demoUrl,
-      features,
-      licenseFeatures: data.licenseFeatures,
-      requirements,
-      tags,
-      attributes: data.attributes,
-      changelog: data.changelog,
-      categorySlug: data.categorySlug,
-    });
-  } catch (e) {
-    console.error("saveOverride", e);
-  }
 
   try {
     let category = await prisma.category.findFirst({
@@ -156,17 +126,16 @@ export async function POST(req: Request) {
       /* ignore */
     }
 
-    return NextResponse.json({ item }, { status: 201 });
+    return NextResponse.json({ item, permanent: true }, { status: 201 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "DB error";
     return NextResponse.json(
       {
         ok: true,
-        simulated: true,
-        override: true,
-        message: "Product accepted (DB table may need prisma db push)",
+        permanent: false,
+        message: "Could not create in DB — run npx prisma db push",
         error: message,
-        item: { id: overrideId, title: data.title, slug: data.slug },
+        item: { id: data.slug, title: data.title, slug: data.slug },
       },
       { status: 200 }
     );
@@ -181,18 +150,22 @@ export async function PUT(req: Request) {
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
   const isFree = Boolean(body.isFree) || Number(body.regularPrice) === 0;
+  const regularPrice = isFree ? 0 : Number(body.regularPrice ?? 0);
+  const extendedPrice = isFree ? 0 : Number(body.extendedPrice ?? 0);
+  const salePriceRegular = isFree
+    ? null
+    : body.salePriceRegular != null
+      ? Number(body.salePriceRegular)
+      : null;
+
   const overridePayload = {
     id: String(body.id),
     title: body.title,
     slug: body.slug,
     description: body.description,
-    regularPrice: isFree ? 0 : Number(body.regularPrice ?? 0),
-    extendedPrice: isFree ? 0 : Number(body.extendedPrice ?? 0),
-    salePriceRegular: isFree
-      ? null
-      : body.salePriceRegular != null
-        ? Number(body.salePriceRegular)
-        : null,
+    regularPrice,
+    extendedPrice,
+    salePriceRegular,
     isFree,
     thumbnailUrl: body.thumbnailUrl,
     demoUrl: body.demoUrl,
@@ -210,59 +183,98 @@ export async function PUT(req: Request) {
     categorySlug: body.categorySlug,
   };
 
-  // Never block admin UI if SiteSetting table is missing
-  let dbOverrideOk = true;
   try {
-    const saved = await saveOverride(String(body.id), overridePayload);
+    await saveOverride(String(body.id), overridePayload);
     if (body.slug) {
       await saveOverride(String(body.slug), {
         ...overridePayload,
         id: String(body.slug),
       });
     }
-    if (saved && (saved as { _dbUnavailable?: boolean })._dbUnavailable) {
-      dbOverrideOk = false;
-    }
   } catch {
-    dbOverrideOk = false;
+    /* optional */
   }
 
   try {
-    const item = await prisma.item.update({
-      where: { id: String(body.id) },
-      data: {
-        title: body.title,
-        slug: body.slug,
-        description: body.description || "",
-        regularPrice: overridePayload.regularPrice,
-        extendedPrice: overridePayload.extendedPrice,
-        salePriceRegular: overridePayload.salePriceRegular,
-        thumbnailUrl: body.thumbnailUrl || undefined,
-        demoUrl: body.demoUrl || undefined,
-        features: body.features ?? [],
-        tags: body.tags ?? [],
-        status:
-          body.status === "APPROVED"
-            ? "APPROVED"
-            : body.status === "REJECTED"
-              ? "REJECTED"
-              : "PENDING",
-      },
+    let category = await prisma.category.findFirst({
+      where: { slug: body.categorySlug || "javascript" },
     });
-    return NextResponse.json({
-      item,
-      override: true,
-      clientFallback: !dbOverrideOk,
+    if (!category) {
+      category = await prisma.category.create({
+        data: {
+          slug: body.categorySlug || "javascript",
+          name: String(body.categorySlug || "javascript")
+            .split("-")
+            .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" "),
+        },
+      });
+    }
+
+    let author = await prisma.user.findFirst({ where: { role: "ADMIN" } });
+    if (!author) {
+      author = await prisma.user.create({
+        data: {
+          email: process.env.ADMIN_EMAIL ?? "admin@codebazaar.com",
+          username: "codebazaar",
+          name: "CodeBazaar",
+          role: "ADMIN",
+        },
+      });
+    }
+
+    const slug = String(body.slug || body.id);
+    const existing = await prisma.item.findFirst({
+      where: { OR: [{ id: String(body.id) }, { slug }] },
     });
-  } catch {
+
+    const itemData = {
+      title: String(body.title || "Untitled"),
+      slug,
+      description: String(body.description || ""),
+      regularPrice,
+      extendedPrice,
+      salePriceRegular,
+      thumbnailUrl:
+        body.thumbnailUrl || `https://picsum.photos/seed/${slug}/640/400`,
+      demoUrl: body.demoUrl || null,
+      features: body.features ?? [],
+      tags: body.tags ?? [],
+      status: "APPROVED" as const,
+      authorId: author.id,
+      categoryId: category.id,
+    };
+
+    const item = existing
+      ? await prisma.item.update({ where: { id: existing.id }, data: itemData })
+      : await prisma.item.create({ data: itemData });
+
+    try {
+      await saveOverride(String(body.id), {
+        ...overridePayload,
+        id: item.id,
+        slug: item.slug,
+      });
+    } catch {
+      /* ignore */
+    }
+
     return NextResponse.json({
       ok: true,
-      override: true,
-      clientFallback: !dbOverrideOk,
+      item,
+      permanent: true,
+      message: "Product saved permanently to database",
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "DB error";
+    return NextResponse.json({
+      ok: true,
+      permanent: false,
+      clientFallback: true,
       item: overridePayload,
-      message: dbOverrideOk
-        ? "Saved product override — Free / edits will show on the storefront"
-        : "Saved. Browser will apply Free/edits immediately. For permanent multi-device storage run: npx prisma db push",
+      error: message,
+      message:
+        "Could not write to database tables yet. Changes are kept in this browser. Run once: npx prisma db push",
     });
   }
 }

@@ -20,7 +20,8 @@ const NAV = [
     label: "Settings",
     icon: Settings,
     children: [
-      { href: "/admin/settings", label: "General" },
+      { href: "/admin/settings", label: "All settings" },
+      { href: "/admin/settings/general", label: "General" },
       { href: "/admin/settings/homepage", label: "Homepage" },
       { href: "/admin/settings/header-footer", label: "Header & Footer" },
       { href: "/admin/settings/seo", label: "Technical SEO" },
@@ -32,6 +33,7 @@ const NAV = [
 
 function isActive(pathname: string, href: string, exact?: boolean) {
   if (exact) return pathname === href;
+  if (href === "/admin/settings") return pathname === "/admin/settings";
   return pathname === href || pathname.startsWith(href + "/");
 }
 

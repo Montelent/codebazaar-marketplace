@@ -9,7 +9,12 @@ type Props = {
   title: string;
   description?: string;
   initial: Record<string, unknown>;
-  fields: { key: string; label: string; type?: "text" | "textarea" | "number" | "checkbox" | "url"; help?: string }[];
+  fields: {
+    key: string;
+    label: string;
+    type?: "text" | "textarea" | "number" | "checkbox" | "url";
+    help?: string;
+  }[];
 };
 
 export function SettingsForm({ title, description, initial, fields }: Props) {
@@ -20,16 +25,25 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true); setMsg("");
-    const res = await fetch("/api/admin/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ settings: values }),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) { setMsg(data.hint || data.error || "Save failed"); return; }
-    setMsg("Saved successfully");
+    setSaving(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: values }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(data.hint || data.error || "Save failed — run prisma db push if tables are missing");
+        return;
+      }
+      setMsg("Saved successfully");
+    } catch {
+      setMsg("Network error while saving");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -64,12 +78,22 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
           return (
             <div key={f.key}>
               <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
-              <Input type={f.type === "number" ? "number" : f.type === "url" ? "url" : "text"} value={String(val ?? "")} onChange={(e) => set(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)} />
+              <Input
+                type={f.type === "number" ? "number" : f.type === "url" ? "url" : "text"}
+                value={String(val ?? "")}
+                onChange={(e) => set(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)}
+              />
               {f.help && <p className="mt-1 text-xs text-slate-500">{f.help}</p>}
             </div>
           );
         })}
-        {msg && <p className={`rounded px-3 py-2 text-sm ${msg.includes("fail") ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-800"}`}>{msg}</p>}
+        {msg && (
+          <p className={`rounded px-3 py-2 text-sm ${
+            msg.toLowerCase().includes("fail") || msg.toLowerCase().includes("error")
+              ? "bg-amber-50 text-amber-900"
+              : "bg-emerald-50 text-emerald-800"
+          }`}>{msg}</p>
+        )}
         <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
       </div>
     </form>

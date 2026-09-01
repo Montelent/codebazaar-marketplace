@@ -2,31 +2,40 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useCartStore } from "@/lib/cart-store";
-import { usePurchasesStore } from "@/lib/purchases-store";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2 } from "lucide-react";
 
+type OwnedPreview = {
+  itemId: string;
+  slug: string;
+  title: string;
+  licenseType: string;
+  price: number;
+};
+
 export default function CheckoutPage() {
+  const { data: session } = useSession();
   const items = useCartStore((s) => s.items);
   const clearCart = useCartStore((s) => s.clearCart);
-  const addPurchases = usePurchasesStore((s) => s.addPurchases);
   const total = useMemo(
     () => items.reduce((sum, i) => sum + Number(i.price), 0),
     [items]
   );
   const isFree = total <= 0;
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [email, setEmail] = useState(session?.user?.email || "");
+  const [name, setName] = useState(session?.user?.name || "");
   const [method, setMethod] = useState<"free" | "manual" | "stripe">(
     isFree ? "free" : "manual"
   );
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [orderItems, setOrderItems] = useState(items);
+  const [orderItems, setOrderItems] = useState<OwnedPreview[]>([]);
+  const [orderId, setOrderId] = useState("");
 
   if (items.length === 0 && !done) {
     return (
@@ -45,12 +54,11 @@ export default function CheckoutPage() {
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
         <h1 className="mt-4 text-2xl font-bold text-slate-900">
-          {isFree ? "Download ready" : "Order placed"}
+          {isFree ? "Download ready" : "Order saved"}
         </h1>
         <p className="mt-2 text-slate-600">
-          {isFree
-            ? "Your free item(s) are in Downloads and Purchases."
-            : "Your licenses are ready. Open Downloads to get your files."}
+          Saved to the database{orderId ? ` (order ${orderId.slice(0, 8)}…)` : ""}. Use the same
+          email on any device to open Downloads and Purchases.
         </p>
         <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-slate-700">
           {orderItems.map((i) => (
@@ -76,41 +84,61 @@ export default function CheckoutPage() {
     e.preventDefault();
     setError("");
     if (!email.trim()) {
-      setError("Email is required");
+      setError("Email is required so your purchases sync on every device");
       return;
     }
     setLoading(true);
     try {
-      const owned = items.map((i) => ({
-        id: `${i.itemId}-${i.licenseType}-${Date.now()}`,
+      const payloadItems = items.map((i) => ({
         itemId: i.itemId,
         slug: i.slug,
         title: i.title,
         thumbnailUrl: i.thumbnailUrl,
         licenseType: i.licenseType,
         price: Number(i.price),
-        purchasedAt: new Date().toISOString(),
-        downloadUrl: `/api/download/${i.itemId}`,
       }));
-      addPurchases(owned);
-      setOrderItems([...items]);
-      try {
-        await fetch("/api/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: email.trim(),
-            name: name.trim(),
-            method: isFree ? "free" : method,
-            items: owned,
-            total,
-          }),
-        });
-      } catch {
-        /* client store is enough */
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          name: name.trim(),
+          method: isFree ? "free" : method,
+          items: payloadItems,
+          total,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.permanent) {
+        setError(
+          data.error ||
+            "Could not save order to the database. Check DATABASE_URL on Vercel."
+        );
+        return;
       }
+      setOrderId(String(data.orderId || ""));
+      setOrderItems(
+        (data.items || payloadItems).map(
+          (i: {
+            itemId: string;
+            slug?: string;
+            title?: string;
+            licenseType?: string;
+            price?: number;
+          }) => ({
+            itemId: i.itemId,
+            slug: i.slug || "",
+            title: i.title || "Item",
+            licenseType: i.licenseType || "REGULAR",
+            price: Number(i.price) || 0,
+          })
+        )
+      );
       clearCart();
       setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error saving order");
     } finally {
       setLoading(false);
     }
@@ -120,7 +148,7 @@ export default function CheckoutPage() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Checkout</h1>
       <p className="text-sm text-slate-500">
-        {isFree ? "Free items — no payment required" : "Complete your purchase"}
+        Purchases are stored in the database for any device.
       </p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-5">
@@ -133,7 +161,7 @@ export default function CheckoutPage() {
                 <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" required />
               </div>
               <div>
-                <label className="text-sm font-medium">Email</label>
+                <label className="text-sm font-medium">Email (required for multi-device access)</label>
                 <Input
                   type="email"
                   value={email}
@@ -159,9 +187,6 @@ export default function CheckoutPage() {
                   />
                   <span className="text-sm">
                     <strong>Manual / bank transfer</strong>
-                    <span className="block text-xs text-slate-500">
-                      We confirm payment then unlock downloads
-                    </span>
                   </span>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
@@ -174,9 +199,6 @@ export default function CheckoutPage() {
                   />
                   <span className="text-sm">
                     <strong>Card (Stripe)</strong>
-                    <span className="block text-xs text-slate-500">
-                      Requires Stripe keys in Admin → Payments
-                    </span>
                   </span>
                 </label>
               </div>
@@ -189,12 +211,10 @@ export default function CheckoutPage() {
 
           <Button type="submit" className="w-full" size="lg" disabled={loading}>
             {loading
-              ? "Processing…"
+              ? "Saving to database…"
               : isFree
                 ? "Get free items"
-                : method === "stripe"
-                  ? `Pay ${formatPrice(total)} with Stripe`
-                  : `Place order · ${formatPrice(total)}`}
+                : `Place order · ${formatPrice(total)}`}
           </Button>
         </form>
 
@@ -214,9 +234,6 @@ export default function CheckoutPage() {
             <span>Total</span>
             <span>{isFree ? "Free" : formatPrice(total)}</span>
           </div>
-          <Link href="/cart" className="mt-3 inline-block text-xs text-emerald-600 hover:underline">
-            ← Edit cart
-          </Link>
         </div>
       </div>
     </div>

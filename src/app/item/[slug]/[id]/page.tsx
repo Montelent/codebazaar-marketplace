@@ -12,6 +12,8 @@ import { formatPrice, getEffectivePrice, cn } from "@/lib/utils";
 import { useCartStore } from "@/lib/cart-store";
 import { Button } from "@/components/ui/button";
 import { ItemCard } from "@/components/items/item-card";
+import { LicensePicker } from "@/components/items/license-picker";
+import { AttributeRow } from "@/components/items/attribute-row";
 
 export default function ItemDetailPage({
   params,
@@ -55,7 +57,15 @@ export default function ItemDetailPage({
     (i) => i.category.slug === product.category.slug && i.id !== product.id
   ).slice(0, 4);
   const changelogVisible = showAllChangelog ? product.changelogs : product.changelogs.slice(0, 3);
-  const attrsVisible = showAllAttrs ? product.attributes : product.attributes.slice(0, 6);
+
+  const mergedAttrs = (() => {
+    const base = [...product.attributes];
+    const has = (lab: string) => base.some((a) => a.label === lab);
+    if (!has("Last Update")) base.unshift({ label: "Last Update", value: product.lastUpdate });
+    if (!has("Created")) base.splice(1, 0, { label: "Created", value: product.createdAt });
+    return base;
+  })();
+  const attrsVisible = showAllAttrs ? mergedAttrs : mergedAttrs.slice(0, 6);
 
   return (
     <div className="min-h-screen bg-white">
@@ -121,12 +131,6 @@ export default function ItemDetailPage({
                 {product.features.map((f) => (<li key={f}>{f}</li>))}
               </ul>
             )}
-            <div className="not-prose mt-4 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-              <div className="relative aspect-video w-full max-w-md">
-                <Image src={product.thumbnailUrl} alt={`${product.title} preview`} fill className="object-cover" sizes="400px" />
-              </div>
-              <p className="border-t border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500">{product.title}</p>
-            </div>
           </div>
 
           <section className="mt-8">
@@ -189,16 +193,17 @@ export default function ItemDetailPage({
         </div>
 
         <aside className="lg:col-span-4">
-          <div className="sticky top-20 space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="sticky top-20 space-y-4 overflow-visible">
+            <div className="relative z-20 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
-                <div className="relative flex-1">
-                  <select value={license} onChange={(e) => setLicense(e.target.value as "REGULAR" | "EXTENDED")} className="w-full appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm font-medium text-slate-800">
-                    <option value="REGULAR">Regular License</option>
-                    <option value="EXTENDED">Extended License</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </div>
+                <LicensePicker
+                  license={license}
+                  onChange={setLicense}
+                  regularPrice={product.regularPrice}
+                  extendedPrice={product.extendedPrice}
+                  saleRegular={product.salePriceRegular}
+                  saleExtended={product.salePriceExtended}
+                />
                 <div className="text-right">
                   {original != null && original > price && (<div className="text-sm text-slate-400 line-through">{formatPrice(original)}</div>)}
                   <div className="text-2xl font-bold text-slate-900">{formatPrice(price)}</div>
@@ -247,21 +252,15 @@ export default function ItemDetailPage({
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <dl className="space-y-3 text-sm">
                 {attrsVisible.map((a) => (
-                  <div key={a.label} className="grid grid-cols-[130px_1fr] gap-2 border-b border-slate-50 pb-2 last:border-0 last:pb-0">
-                    <dt className="text-slate-500">{a.label}</dt>
-                    <dd className="font-medium text-slate-800">
-                      {a.label === "Tags" ? (
-                        <div className="flex flex-wrap gap-1">
-                          {(a.value || product.tags.join(", ")).split(",").map((t) => t.trim()).filter(Boolean).map((t) => (
-                            <span key={t} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-700">{t}</span>
-                          ))}
-                        </div>
-                      ) : a.value}
-                    </dd>
-                  </div>
+                  <AttributeRow
+                    key={a.label}
+                    label={a.label}
+                    value={a.value}
+                    tagsFallback={product.tags}
+                  />
                 ))}
               </dl>
-              {product.attributes.length > 6 && (
+              {mergedAttrs.length > 6 && (
                 <button type="button" onClick={() => setShowAllAttrs((v) => !v)} className="mt-3 text-sm font-medium text-emerald-700 hover:underline">
                   {showAllAttrs ? "Fewer Attributes" : "More Attributes"}
                 </button>

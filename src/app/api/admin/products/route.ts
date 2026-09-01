@@ -143,10 +143,18 @@ export async function POST(req: Request) {
       },
     });
 
-    // Also key override by DB id
     try {
-      await saveOverride(item.id, { id: item.id, slug: item.slug, isFree: data.isFree || data.regularPrice === 0, regularPrice: data.regularPrice, extendedPrice: data.extendedPrice, title: data.title });
-    } catch { /* ignore */ }
+      await saveOverride(item.id, {
+        id: item.id,
+        slug: item.slug,
+        isFree: data.isFree || data.regularPrice === 0,
+        regularPrice: data.regularPrice,
+        extendedPrice: data.extendedPrice,
+        title: data.title,
+      });
+    } catch {
+      /* ignore */
+    }
 
     return NextResponse.json({ item }, { status: 201 });
   } catch (e) {
@@ -204,7 +212,12 @@ export async function PUT(req: Request) {
 
   try {
     await saveOverride(String(body.id), overridePayload);
-    if (body.slug) await saveOverride(String(body.slug), { ...overridePayload, id: String(body.slug) });
+    if (body.slug) {
+      await saveOverride(String(body.slug), {
+        ...overridePayload,
+        id: String(body.slug),
+      });
+    }
   } catch (e) {
     return NextResponse.json(
       {
@@ -239,10 +252,11 @@ export async function PUT(req: Request) {
     });
     return NextResponse.json({ item, override: true });
   } catch {
+    // overridePayload already includes id — do not spread id twice
     return NextResponse.json({
       ok: true,
       override: true,
-      item: { id: body.id, ...overridePayload },
+      item: overridePayload,
       message: "Saved product override — storefront will show Free / updated fields",
     });
   }

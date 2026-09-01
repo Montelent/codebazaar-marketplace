@@ -2,25 +2,58 @@ import Link from "next/link";
 import { Search, ArrowRight, Shield, BookOpen, Star } from "lucide-react";
 import { MOCK_ITEMS, CATEGORY_CARDS } from "@/lib/mock-data";
 import { ItemCard } from "@/components/items/item-card";
-import { Button } from "@/components/ui/button";
+import { getAllSettings } from "@/lib/settings";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const s = await getAllSettings();
   const featured = MOCK_ITEMS.slice(0, 4);
   const bestsellers = [...MOCK_ITEMS].sort((a, b) => b.salesCount - a.salesCount).slice(0, 4);
 
+  const heroTitle = String(s["homepage.heroTitle"] ?? "Code that powers your next product");
+  const heroHighlight = String(s["homepage.heroHighlight"] ?? "your next product");
+  const heroSubtitle = String(
+    s["homepage.heroSubtitle"] ??
+      "Discover premium scripts, themes, plugins, and templates from world-class independent creators."
+  );
+  const heroImage = String(s["homepage.heroImageUrl"] ?? "");
+  const heroBg = String(s["homepage.heroBgColor"] ?? "#0f172a");
+  const overlay = Number(s["homepage.heroOverlay"] ?? 0.55);
+  const buttonColor = String(s["homepage.buttonColor"] ?? "#059669");
+  const buttonText = String(s["homepage.buttonTextColor"] ?? "#ffffff");
+  const accent = String(s["homepage.accentColor"] ?? "#10b981");
+  const ctaText = String(s["homepage.heroCtaText"] ?? "Search");
+  const placeholder = String(
+    s["homepage.heroSearchPlaceholder"] ?? "Search scripts, themes, plugins…"
+  );
+
+  const titleParts =
+    heroHighlight && heroTitle.includes(heroHighlight)
+      ? heroTitle.split(heroHighlight)
+      : [heroTitle, ""];
+
   return (
     <div className="pb-16">
-      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-800 text-white">
+      <section className="relative overflow-hidden text-white" style={{ backgroundColor: heroBg }}>
+        {heroImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        ) : null}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundColor: `rgba(15, 23, 42, ${Number.isFinite(overlay) ? overlay : 0.55})`,
+          }}
+        />
         <div className="relative mx-auto max-w-7xl px-4 py-20 sm:py-28">
           <div className="mx-auto max-w-3xl text-center">
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-              Code that powers{" "}
-              <span className="text-emerald-400">your next product</span>
+              {titleParts[0]}
+              {heroHighlight && heroTitle.includes(heroHighlight) ? (
+                <span style={{ color: accent }}>{heroHighlight}</span>
+              ) : null}
+              {titleParts[1]}
             </h1>
-            <p className="mt-4 text-lg text-slate-300">
-              Discover premium scripts, themes, plugins, and templates from
-              world-class independent creators.
-            </p>
+            <p className="mt-4 text-lg text-slate-200">{heroSubtitle}</p>
             <form
               action="/search"
               className="mx-auto mt-8 flex max-w-xl overflow-hidden rounded-xl bg-white shadow-lg"
@@ -28,17 +61,18 @@ export default function HomePage() {
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
-                  name="term"
+                  name="q"
                   type="search"
-                  placeholder="Search for React dashboards, Laravel shops..."
+                  placeholder={placeholder}
                   className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
               <button
                 type="submit"
-                className="bg-emerald-600 px-6 font-semibold text-white hover:bg-emerald-700"
+                className="px-6 font-semibold transition hover:opacity-90"
+                style={{ backgroundColor: buttonColor, color: buttonText }}
               >
-                Search
+                {ctaText}
               </button>
             </form>
           </div>
@@ -55,10 +89,8 @@ export default function HomePage() {
               className="group rounded-xl border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:shadow-md"
             >
               <span className="text-2xl">{cat.icon}</span>
-              <h3 className="mt-2 font-semibold text-slate-900 group-hover:text-emerald-700">
-                {cat.name}
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 line-clamp-2">{cat.description}</p>
+              <h3 className="mt-2 font-semibold text-slate-900 group-hover:text-emerald-700">{cat.name}</h3>
+              <p className="mt-1 line-clamp-2 text-xs text-slate-500">{cat.description}</p>
             </Link>
           ))}
         </div>
@@ -96,27 +128,21 @@ export default function HomePage() {
               <Star className="h-6 w-6 text-emerald-600" />
             </div>
             <h3 className="mt-4 font-semibold text-slate-900">Home of popular scripts</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Thousands of battle-tested items trusted by developers and agencies.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">Thousands of battle-tested items trusted by developers and agencies.</p>
           </div>
           <div className="text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
               <BookOpen className="h-6 w-6 text-emerald-600" />
             </div>
             <h3 className="mt-4 font-semibold text-slate-900">Clear docs & support</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Every item ships with documentation and author support channels.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">Every item ships with documentation and author support channels.</p>
           </div>
           <div className="text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
               <Shield className="h-6 w-6 text-emerald-600" />
             </div>
             <h3 className="mt-4 font-semibold text-slate-900">Quality-reviewed creators</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Every submission is reviewed before it reaches the marketplace.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">Every submission is reviewed before it reaches the marketplace.</p>
           </div>
         </div>
       </section>

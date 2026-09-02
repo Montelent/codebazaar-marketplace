@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { query, queryOne } from "@/lib/db";
 import { MOCK_ITEMS } from "@/lib/mock-data";
 import {
   PRODUCT_DETAILS,
@@ -34,12 +34,22 @@ const OVERRIDES_KEY = "products.overrides";
 
 export async function getOverrides(): Promise<Record<string, ProductOverride>> {
   try {
-    const row = await prisma.siteSetting.findUnique({ where: { key: OVERRIDES_KEY } });
+    const row = await queryOne<{ value: unknown }>(
+      `SELECT value FROM "SiteSetting" WHERE key = $1 LIMIT 1`,
+      [OVERRIDES_KEY]
+    );
     if (row?.value && typeof row.value === "object") {
       return row.value as Record<string, ProductOverride>;
     }
+    if (typeof row?.value === "string") {
+      try {
+        return JSON.parse(row.value);
+      } catch {
+        return {};
+      }
+    }
   } catch {
-    /* DB unavailable */
+    /* ignore */
   }
   return {};
 }
@@ -63,19 +73,16 @@ export async function saveOverride(id: string, data: ProductOverride) {
   if (data.slug) {
     all[data.slug] = { ...all[id], id: data.slug };
   }
-  try {
-    const jsonValue = JSON.parse(JSON.stringify(all));
-    await prisma.siteSetting.upsert({
-      where: { key: OVERRIDES_KEY },
-      update: { value: jsonValue, group: "products" },
-      create: { key: OVERRIDES_KEY, value: jsonValue, group: "products" },
-    });
-  } catch (e) {
-    console.error("saveOverride DB error:", e);
-    return { ...all[id], _dbUnavailable: true } as ProductOverride & {
-      _dbUnavailable?: boolean;
-    };
-  }
+
+  const payload = JSON.stringify(all);
+  await query(
+    `
+    INSERT INTO "SiteSetting" ("id", "key", "value", "group", "updatedAt")
+    VALUES (gen_random_uuid()::text, $1, $2::jsonb, 'products', NOW())
+    ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = NOW()
+    `,
+    [OVERRIDES_KEY, payload]
+  );
   return all[id];
 }
 
@@ -132,6 +139,27 @@ function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetai
   };
 }
 
+type DbItem = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  features: unknown;
+  tags: unknown;
+  regularPrice: number | string;
+  extendedPrice: number | string;
+  salePriceRegular: number | string | null;
+  salePriceExtended: number | string | null;
+  thumbnailUrl: string;
+  demoUrl: string | null;
+  updatedAt: Date;
+  createdAt: Date;
+  category_name?: string;
+  category_slug?: string;
+  author_username?: string;
+  author_name?: string | null;
+};
+
 export async function getProductDetail(id: string, slug?: string): Promise<ProductDetail> {
   const overrides = await getOverrides();
   const card =
@@ -139,17 +167,18 @@ export async function getProductDetail(id: string, slug?: string): Promise<Produ
   let detail = PRODUCT_DETAILS[card.id] ?? detailFromCard(card);
 
   try {
-    // Mock ids ("1","2") differ from Neon cuids — always match by slug
-    const db = await prisma.item.findFirst({
-      where: {
-        OR: [
-          { id },
-          { slug: card.slug },
-          ...(slug ? [{ slug }] : []),
-        ],
-      },
-      include: { category: true, author: true },
-    });
+    const db = await queryOne<DbItem>(
+      `
+      SELECT i.*, c.name AS category_name, c.slug AS category_slug,
+             u.username AS author_username, u.name AS author_name
+      FROM "Item" i
+      LEFT JOIN "Category" c ON c.id = i."categoryId"
+      LEFT JOIN "User" u ON u.id = i."authorId"
+      WHERE i.id = $1 OR i.slug = $2 OR i.slug = $3
+      LIMIT 1
+      `,
+      [id, card.slug, slug || card.slug]
+    );
     if (db) {
       const feat = Array.isArray(db.features) ? (db.features as string[]) : [];
       const tags = Array.isArray(db.tags) ? (db.tags as string[]) : [];
@@ -170,31 +199,31 @@ export async function getProductDetail(id: string, slug?: string): Promise<Produ
         demoUrl: db.demoUrl || undefined,
         features: feat.length ? feat : detail.features,
         tags: tags.length ? tags : detail.tags,
-        lastUpdate: db.updatedAt.toLocaleDateString("en-GB", {
+        lastUpdate: new Date(db.updatedAt).toLocaleDateString("en-GB", {
           day: "numeric",
           month: "long",
           year: "numeric",
         }),
-        createdAt: db.createdAt.toLocaleDateString("en-GB", {
+        createdAt: new Date(db.createdAt).toLocaleDateString("en-GB", {
           day: "numeric",
           month: "long",
           year: "numeric",
         }),
         category: {
-          name: db.category.name,
-          slug: db.category.slug,
+          name: db.category_name || detail.category.name,
+          slug: db.category_slug || detail.category.slug,
           parentName: "Code",
           parentSlug: "code",
         },
         author: {
-          username: db.author.username,
-          displayName: db.author.name || db.author.username,
+          username: db.author_username || detail.author.username,
+          displayName: db.author_name || db.author_username || detail.author.displayName,
           isElite: true,
         },
       };
     }
   } catch {
-    /* use mock */
+    /* mock */
   }
 
   const o =
@@ -207,9 +236,17 @@ export async function getProductDetail(id: string, slug?: string): Promise<Produ
 
 export async function listProductCards(): Promise<ItemCardData[]> {
   const overrides = await getOverrides();
-  let dbBySlug: Record<string, { regularPrice: number; title: string; thumbnailUrl: string }> = {};
+  const dbBySlug: Record<
+    string,
+    { regularPrice: number; title: string; thumbnailUrl: string }
+  > = {};
   try {
-    const rows = await prisma.item.findMany({ take: 200 });
+    const { rows } = await query<{
+      slug: string;
+      title: string;
+      thumbnailUrl: string;
+      regularPrice: number | string;
+    }>(`SELECT slug, title, "thumbnailUrl", "regularPrice" FROM "Item" LIMIT 200`);
     for (const r of rows) {
       dbBySlug[r.slug] = {
         regularPrice: Number(r.regularPrice),
@@ -235,9 +272,7 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       regularPrice: isFree
         ? 0
         : Number(o?.regularPrice ?? db?.regularPrice ?? item.regularPrice),
-      extendedPrice: isFree
-        ? 0
-        : Number(o?.extendedPrice ?? item.extendedPrice),
+      extendedPrice: isFree ? 0 : Number(o?.extendedPrice ?? item.extendedPrice),
       salePriceRegular: isFree
         ? null
         : o?.salePriceRegular !== undefined

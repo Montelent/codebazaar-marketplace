@@ -1,69 +1,47 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-
-const schema = z.object({
-  name: z.string().min(2).max(80),
-  username: z
-    .string()
-    .min(3)
-    .max(30)
-    .regex(/^[a-z0-9_]+$/i, "Username: letters, numbers, underscore"),
-  email: z.string().email(),
-  password: z.string().min(8).max(100),
-});
+import { queryOne } from "@/lib/db";
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-  const { name, username, email, password } = parsed.data;
-  const emailNorm = email.trim().toLowerCase();
-  const usernameNorm = username.trim().toLowerCase();
-
   try {
-    const existing = await prisma.user.findFirst({
-      where: { OR: [{ email: emailNorm }, { username: usernameNorm }] },
-    });
-    if (existing) {
+    const body = await req.json();
+    const email = String(body.email || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    const name = String(body.name || "").trim();
+    const username =
+      String(body.username || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, "") || email.split("@")[0];
+
+    if (!email || !password || password.length < 6) {
       return NextResponse.json(
-        { error: "Email or username already registered" },
-        { status: 409 }
+        { error: "Valid email and password (min 6 chars) required" },
+        { status: 400 }
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        email: emailNorm,
-        username: usernameNorm,
-        name,
-        passwordHash,
-        role: "BUYER",
-      },
-      select: { id: true, email: true, username: true, name: true },
-    });
+    const exists = await queryOne(
+      `SELECT id FROM "User" WHERE lower(email) = lower($1) OR username = $2 LIMIT 1`,
+      [email, username]
+    );
+    if (exists) {
+      return NextResponse.json({ error: "Email or username already registered" }, { status: 409 });
+    }
 
-    return NextResponse.json({ user }, { status: 201 });
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await queryOne<{ id: string; email: string; username: string }>(
+      `
+      INSERT INTO "User" ("id", "email", "username", "name", "passwordHash", "role", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'BUYER', NOW(), NOW())
+      RETURNING id, email, username
+      `,
+      [email, username, name || username, passwordHash]
+    );
+
+    return NextResponse.json({ ok: true, user }, { status: 201 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "DB error";
-    return NextResponse.json(
-      {
-        ok: true,
-        simulated: true,
-        message: "Account accepted (DB unavailable — run prisma db push)",
-        error: message,
-        user: {
-          id: "mock-" + Date.now(),
-          email: emailNorm,
-          username: usernameNorm,
-          name,
-        },
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

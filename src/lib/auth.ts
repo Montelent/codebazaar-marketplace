@@ -1,14 +1,11 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { queryOne } from "@/lib/db";
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 14 },
-  pages: {
-    signIn: "/sign-in",
-    error: "/sign-in",
-  },
+  pages: { signIn: "/sign-in", error: "/sign-in" },
   providers: [
     CredentialsProvider({
       id: "credentials",
@@ -21,29 +18,22 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null;
         const email = credentials.email.trim().toLowerCase();
         const password = credentials.password;
-
         const envEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
         const envPassword = process.env.ADMIN_PASSWORD;
         if (envEmail && envPassword && email === envEmail && password === envPassword) {
-          return {
-            id: "admin-env",
-            email: envEmail,
-            name: "CodeBazaar Admin",
-            role: "ADMIN",
-          };
+          return { id: "admin-env", email: envEmail, name: "CodeBazaar Admin", role: "ADMIN" };
         }
-
         try {
-          const user = await prisma.user.findUnique({ where: { email } });
+          const user = await queryOne<{
+            id: string; email: string; name: string | null; username: string; role: string; passwordHash: string | null;
+          }>(
+            `SELECT id, email, name, username, role::text AS role, "passwordHash" FROM "User" WHERE lower(email) = lower($1) LIMIT 1`,
+            [email]
+          );
           if (!user?.passwordHash) return null;
           const ok = await bcrypt.compare(password, user.passwordHash);
           if (!ok) return null;
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name ?? user.username,
-            role: user.role ?? "BUYER",
-          };
+          return { id: user.id, email: user.email, name: user.name ?? user.username, role: user.role ?? "BUYER" };
         } catch {
           return null;
         }
@@ -63,24 +53,19 @@ export const authOptions: NextAuthOptions = {
         const envEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
         const envPassword = process.env.ADMIN_PASSWORD;
         if (envEmail && envPassword && email === envEmail && password === envPassword) {
-          return {
-            id: "admin-env",
-            email: envEmail,
-            name: "CodeBazaar Admin",
-            role: "ADMIN",
-          };
+          return { id: "admin-env", email: envEmail, name: "CodeBazaar Admin", role: "ADMIN" };
         }
         try {
-          const user = await prisma.user.findUnique({ where: { email } });
+          const user = await queryOne<{
+            id: string; email: string; name: string | null; username: string; role: string; passwordHash: string | null;
+          }>(
+            `SELECT id, email, name, username, role::text AS role, "passwordHash" FROM "User" WHERE lower(email) = lower($1) LIMIT 1`,
+            [email]
+          );
           if (!user?.passwordHash || user.role !== "ADMIN") return null;
           const ok = await bcrypt.compare(password, user.passwordHash);
           if (!ok) return null;
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name ?? user.username,
-            role: "ADMIN",
-          };
+          return { id: user.id, email: user.email, name: user.name ?? user.username, role: "ADMIN" };
         } catch {
           return null;
         }
@@ -97,7 +82,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { role?: string }).role = token.role as string;
+        (session.user as { role?: string }).role = (token.role as string) ?? "BUYER";
         (session.user as { id?: string }).id = token.id as string;
       }
       return session;

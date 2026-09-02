@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { query } from "@/lib/db";
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -10,37 +10,32 @@ async function requireAdmin() {
 }
 
 export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const pages = await prisma.cmsPage.findMany({ orderBy: { sortOrder: "asc" } });
-    return NextResponse.json({ pages });
+    const { rows } = await query(`SELECT * FROM "CmsPage" ORDER BY "updatedAt" DESC LIMIT 100`);
+    return NextResponse.json({ pages: rows });
   } catch {
-    return NextResponse.json({ pages: [] });
+    return NextResponse.json({ pages: [], note: "CmsPage table optional" });
   }
 }
 
 export async function POST(req: Request) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
+  if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const page = await prisma.cmsPage.create({
-      data: {
-        title: body.title,
-        slug: body.slug,
-        content: body.content,
-        status: body.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
-        seoTitle: body.seoTitle || null,
-        seoDescription: body.seoDescription || null,
-        showInFooter: Boolean(body.showInFooter),
-      },
-    });
-    return NextResponse.json({ page }, { status: 201 });
+    const body = await req.json();
+    const { rows } = await query(
+      `
+      INSERT INTO "CmsPage" ("id", "title", "slug", "content", "status", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid()::text, $1, $2, $3, 'DRAFT', NOW(), NOW())
+      RETURNING *
+      `,
+      [body.title, body.slug, body.content || ""]
+    );
+    return NextResponse.json({ page: rows[0] }, { status: 201 });
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "DB error", hint: "Run npx prisma db push for CmsPage table" },
-      { status: 503 }
+      { error: e instanceof Error ? e.message : "DB error" },
+      { status: 500 }
     );
   }
 }

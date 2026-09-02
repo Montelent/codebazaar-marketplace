@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { query } from "@/lib/db";
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -10,38 +10,32 @@ async function requireAdmin() {
 }
 
 export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const posts = await prisma.blogPost.findMany({ orderBy: { updatedAt: "desc" }, take: 100 });
-    return NextResponse.json({ posts });
+    const { rows } = await query(`SELECT * FROM "BlogPost" ORDER BY "updatedAt" DESC LIMIT 100`);
+    return NextResponse.json({ posts: rows });
   } catch {
-    return NextResponse.json({ posts: [] });
+    return NextResponse.json({ posts: [], note: "BlogPost table optional" });
   }
 }
 
 export async function POST(req: Request) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
+  if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const post = await prisma.blogPost.create({
-      data: {
-        title: body.title,
-        slug: body.slug,
-        content: body.content,
-        excerpt: body.excerpt || null,
-        status: body.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
-        seoTitle: body.seoTitle || null,
-        seoDescription: body.seoDescription || null,
-        publishedAt: body.status === "PUBLISHED" ? new Date() : null,
-      },
-    });
-    return NextResponse.json({ post }, { status: 201 });
+    const body = await req.json();
+    const { rows } = await query(
+      `
+      INSERT INTO "BlogPost" ("id", "title", "slug", "content", "status", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid()::text, $1, $2, $3, 'DRAFT', NOW(), NOW())
+      RETURNING *
+      `,
+      [body.title, body.slug, body.content || ""]
+    );
+    return NextResponse.json({ post: rows[0] }, { status: 201 });
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "DB error", hint: "Run npx prisma db push for BlogPost table" },
-      { status: 503 }
+      { error: e instanceof Error ? e.message : "DB error" },
+      { status: 500 }
     );
   }
 }

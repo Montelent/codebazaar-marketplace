@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { query, queryOne } from "@/lib/db";
 import { MOCK_ITEMS } from "@/lib/mock-data";
 import { z } from "zod";
 import { saveOverride } from "@/lib/product-store";
@@ -12,17 +12,57 @@ async function requireAdmin() {
   return session;
 }
 
+async function ensureCategory(slug: string) {
+  const existing = await queryOne<{ id: string }>(
+    `SELECT id FROM "Category" WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+  if (existing) return existing.id;
+  const name = slug
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+  const row = await queryOne<{ id: string }>(
+    `INSERT INTO "Category" ("id", "name", "slug") VALUES (gen_random_uuid()::text, $1, $2) RETURNING id`,
+    [name, slug]
+  );
+  return row!.id;
+}
+
+async function ensureAdminUser() {
+  const existing = await queryOne<{ id: string }>(
+    `SELECT id FROM "User" WHERE role = 'ADMIN' LIMIT 1`
+  );
+  if (existing) return existing.id;
+  const email = process.env.ADMIN_EMAIL ?? "admin@codebazaar.com";
+  const row = await queryOne<{ id: string }>(
+    `
+    INSERT INTO "User" ("id", "email", "username", "name", "role", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, $1, 'codebazaar', 'CodeBazaar', 'ADMIN', NOW(), NOW())
+    RETURNING id
+    `,
+    [email]
+  );
+  return row!.id;
+}
+
 export async function GET() {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const items = await prisma.item.findMany({
-      orderBy: { updatedAt: "desc" },
-      include: { category: true, author: { select: { username: true } } },
-      take: 200,
-    });
-    if (items.length === 0) return NextResponse.json({ source: "mock", items: MOCK_ITEMS });
-    return NextResponse.json({ source: "db", items });
+    const { rows } = await query(
+      `
+      SELECT i.*, c.name AS "categoryName", c.slug AS "categorySlug",
+             u.username AS "authorUsername"
+      FROM "Item" i
+      LEFT JOIN "Category" c ON c.id = i."categoryId"
+      LEFT JOIN "User" u ON u.id = i."authorId"
+      ORDER BY i."updatedAt" DESC
+      LIMIT 200
+      `
+    );
+    if (rows.length === 0) return NextResponse.json({ source: "mock", items: MOCK_ITEMS });
+    return NextResponse.json({ source: "db", items: rows });
   } catch {
     return NextResponse.json({ source: "mock", items: MOCK_ITEMS });
   }
@@ -41,11 +81,7 @@ const productSchema = z.object({
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
   isFree: z.boolean().optional(),
   features: z.array(z.string()).optional(),
-  licenseFeatures: z.array(z.string()).optional(),
-  requirements: z.union([z.array(z.string()), z.string()]).optional(),
   tags: z.array(z.string()).optional(),
-  attributes: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
-  changelog: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -56,85 +92,65 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const data = { ...parsed.data };
-  if (data.isFree) {
-    data.regularPrice = 0;
-    data.extendedPrice = 0;
-  }
-  const putBody = { id: data.slug, ...data };
-  const fakeReq = { json: async () => putBody } as Request;
-  return PUT(fakeReq);
+  return PUT(
+    new Request(req.url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: parsed.data.slug, ...parsed.data }),
+    })
+  );
 }
 
 export async function PUT(req: Request) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
-  if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-
-  const isFree = Boolean(body.isFree) || Number(body.regularPrice) === 0;
-  const regularPrice = isFree ? 0 : Number(body.regularPrice ?? 0);
-  const extendedPrice = isFree ? 0 : Number(body.extendedPrice ?? 0);
-  const salePriceRegular =
-    isFree ? null : body.salePriceRegular != null ? Number(body.salePriceRegular) : null;
-  const slug = String(body.slug || body.id);
-  const title = String(body.title || "Untitled");
-  const description = String(body.description || "");
-  const thumbnailUrl = body.thumbnailUrl || `https://picsum.photos/seed/${slug}/640/400`;
-  const demoUrl = body.demoUrl ? String(body.demoUrl) : null;
-  const featuresJson = JSON.stringify(body.features ?? []);
-  const tagsJson = JSON.stringify(body.tags ?? []);
-
   try {
-    await saveOverride(String(body.id), {
-      id: String(body.id),
-      title,
-      slug,
-      description,
-      regularPrice,
-      extendedPrice,
-      salePriceRegular,
-      isFree,
-      thumbnailUrl,
-      demoUrl: demoUrl || undefined,
-      features: body.features,
-      tags: body.tags,
-      attributes: body.attributes,
-      categorySlug: body.categorySlug,
-    });
-  } catch {
-    /* optional */
-  }
+    const body = await req.json();
+    if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  try {
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO "User" ("id", "email", "username", "name", "role", "createdAt", "updatedAt")
-      SELECT gen_random_uuid()::text, '${(process.env.ADMIN_EMAIL ?? "admin@codebazaar.com").replace(/'/g, "")}', 'codebazaar', 'CodeBazaar', 'ADMIN', NOW(), NOW()
-      WHERE NOT EXISTS (SELECT 1 FROM "User" WHERE "role" = 'ADMIN')
-    `);
+    const isFree = Boolean(body.isFree) || Number(body.regularPrice) === 0;
+    const regularPrice = isFree ? 0 : Number(body.regularPrice ?? 0);
+    const extendedPrice = isFree ? 0 : Number(body.extendedPrice ?? 0);
+    const salePriceRegular = isFree
+      ? null
+      : body.salePriceRegular != null
+        ? Number(body.salePriceRegular)
+        : null;
+    const slug = String(body.slug || body.id);
+    const title = String(body.title || "Untitled");
+    const description = String(body.description || "");
+    const thumbnailUrl =
+      body.thumbnailUrl || `https://picsum.photos/seed/${slug}/640/400`;
+    const demoUrl = body.demoUrl ? String(body.demoUrl) : null;
+    const featuresJson = JSON.stringify(body.features ?? []);
+    const tagsJson = JSON.stringify(body.tags ?? []);
 
-    const catSlug = String(body.categorySlug || "javascript").replace(/'/g, "");
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO "Category" ("id", "name", "slug")
-      SELECT gen_random_uuid()::text, '${catSlug}', '${catSlug}'
-      WHERE NOT EXISTS (SELECT 1 FROM "Category" WHERE "slug" = '${catSlug}')
-    `);
-
-    const authors = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `SELECT id FROM "User" WHERE role = 'ADMIN' LIMIT 1`
-    );
-    const cats = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `SELECT id FROM "Category" WHERE slug = $1 LIMIT 1`,
-      catSlug
-    );
-    const authorId = authors[0]?.id;
-    const categoryId = cats[0]?.id;
-    if (!authorId || !categoryId) {
-      throw new Error("Missing admin user or category — check DATABASE_URL on Vercel matches Neon");
+    try {
+      await saveOverride(String(body.id), {
+        id: String(body.id),
+        title,
+        slug,
+        description,
+        regularPrice,
+        extendedPrice,
+        salePriceRegular,
+        isFree,
+        thumbnailUrl,
+        demoUrl: demoUrl || undefined,
+        features: body.features,
+        tags: body.tags,
+        attributes: body.attributes,
+        categorySlug: body.categorySlug,
+      });
+    } catch (e) {
+      console.error("override save:", e);
     }
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ id: string; slug: string }>>(
+    const categoryId = await ensureCategory(String(body.categorySlug || "javascript"));
+    const authorId = await ensureAdminUser();
+
+    const row = await queryOne<{ id: string; slug: string }>(
       `
       INSERT INTO "Item" (
         "id", "title", "slug", "description", "features", "tags",
@@ -160,43 +176,45 @@ export async function PUT(req: Request) {
         "updatedAt" = NOW()
       RETURNING id, slug
       `,
-      title,
-      slug,
-      description,
-      featuresJson,
-      tagsJson,
-      regularPrice,
-      extendedPrice,
-      salePriceRegular,
-      thumbnailUrl,
-      demoUrl,
-      authorId,
-      categoryId
+      [
+        title,
+        slug,
+        description,
+        featuresJson,
+        tagsJson,
+        regularPrice,
+        extendedPrice,
+        salePriceRegular,
+        thumbnailUrl,
+        demoUrl,
+        authorId,
+        categoryId,
+      ]
     );
 
     return NextResponse.json({
       ok: true,
       permanent: true,
       item: {
-        id: rows[0]?.id || body.id,
-        slug: rows[0]?.slug || slug,
+        id: row?.id || body.id,
+        slug: row?.slug || slug,
         title,
         regularPrice,
         isFree,
       },
-      message: "Product saved permanently to database",
+      message: "Product saved to Postgres",
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "DB error";
-    console.error("Product save DB error:", message);
-    return NextResponse.json({
-      ok: true,
-      permanent: false,
-      clientFallback: true,
-      item: { id: body.id, slug, title, regularPrice, isFree },
-      error: message,
-      message:
-        "Could not write to database yet. Changes kept in this browser. Error: " + message,
-    });
+    console.error("Product PUT failed:", message);
+    return NextResponse.json(
+      {
+        ok: false,
+        permanent: false,
+        error: message,
+        message: "Postgres save failed: " + message,
+      },
+      { status: 500 }
+    );
   }
 }

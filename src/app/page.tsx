@@ -3,14 +3,16 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { Search, ArrowRight, Shield, BookOpen, Star } from "lucide-react";
-import { MOCK_ITEMS, CATEGORY_CARDS } from "@/lib/mock-data";
+import { CATEGORY_CARDS } from "@/lib/mock-data";
 import { ItemCard } from "@/components/items/item-card";
 import { getAllSettings } from "@/lib/settings";
+import { listProductCards } from "@/lib/product-store";
 
 export default async function HomePage() {
   const s = await getAllSettings();
-  const featured = MOCK_ITEMS.slice(0, 4);
-  const bestsellers = [...MOCK_ITEMS].sort((a, b) => b.salesCount - a.salesCount).slice(0, 4);
+  const allItems = await listProductCards();
+  const featured = allItems.slice(0, 4);
+  const bestsellers = [...allItems].sort((a, b) => b.salesCount - a.salesCount).slice(0, 4);
 
   const heroTitle = String(s["homepage.heroTitle"] ?? "Code that powers your next product");
   const heroHighlight = String(s["homepage.heroHighlight"] ?? "your next product");
@@ -28,6 +30,7 @@ export default async function HomePage() {
   const placeholder = String(
     s["homepage.heroSearchPlaceholder"] ?? "Search scripts, themes, plugins…"
   );
+  const siteName = String(s["general.siteName"] ?? "CodeBazaar");
 
   const titleParts =
     heroHighlight && heroTitle.includes(heroHighlight)
@@ -49,6 +52,7 @@ export default async function HomePage() {
         />
         <div className="relative mx-auto max-w-7xl px-4 py-20 sm:py-28">
           <div className="mx-auto max-w-3xl text-center">
+            <p className="mb-2 text-sm font-medium text-slate-300">{siteName}</p>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
               {titleParts[0]}
               {heroHighlight && heroTitle.includes(heroHighlight) ? (

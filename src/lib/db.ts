@@ -3,30 +3,55 @@ import { Pool, type QueryResultRow } from "pg";
 function cleanDatabaseUrl(raw?: string): string {
   if (!raw) {
     throw new Error(
-      "DATABASE_URL (or POSTGRES_URL) is not set. In Vercel add DATABASE_URL = same value as POSTGRES_URL, then redeploy."
+      "DATABASE_URL (or POSTGRES_URL) is not set. In Vercel set DATABASE_URL to the same value as POSTGRES_URL, then redeploy."
     );
   }
+  // Vercel/UI paste issues: quotes, whitespace, accidental newlines
+  let s = String(raw).trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  s = s.replace(/\s+/g, "");
+
+  if (!s.startsWith("postgres://") && !s.startsWith("postgresql://")) {
+    throw new Error(
+      "DATABASE_URL must start with postgresql:// — current value is not a valid Postgres URI"
+    );
+  }
+
   try {
-    const u = new URL(raw);
+    const u = new URL(s);
     u.searchParams.delete("channel_binding");
     if (!u.searchParams.has("sslmode")) {
       u.searchParams.set("sslmode", "require");
     }
     return u.toString();
   } catch {
-    return raw.replace(/[?&]channel_binding=require/g, "").replace(/\?&/, "?");
+    // Fallback strip
+    return s
+      .replace(/[?&]channel_binding=require/g, "")
+      .replace(/\?&/, "?")
+      .replace(/\?$/, "");
   }
 }
 
-/** Prefer DATABASE_URL; fall back to Vercel/Supabase integration names */
 function resolveDatabaseUrl(): string | undefined {
-  return (
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.DATABASE_URL_UNPOOLED ||
-    process.env.POSTGRES_URL_NON_POOLING
-  );
+  const candidates = [
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_URL,
+    process.env.POSTGRES_PRISMA_URL,
+    process.env.DATABASE_URL_UNPOOLED,
+    process.env.POSTGRES_URL_NON_POOLING,
+  ];
+  for (const c of candidates) {
+    if (!c) continue;
+    const t = String(c).trim().replace(/^['"]|['"]$/g, "");
+    if (t.startsWith("postgres")) return t;
+  }
+  return undefined;
 }
 
 const globalForDb = globalThis as unknown as { __pgPool?: Pool };

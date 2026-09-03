@@ -6,6 +6,16 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const raw = resolveDatabaseUrl();
   const hasUrl = Boolean(raw);
+  let hostHint: string | null = null;
+  if (raw) {
+    try {
+      const cleaned = String(raw).trim().replace(/^['"]|['"]$/g, "");
+      hostHint = new URL(cleaned).hostname;
+    } catch {
+      hostHint = "unparseable";
+    }
+  }
+
   let tables: string[] = [];
   const ping = await dbPing();
   if (ping.ok) {
@@ -18,8 +28,10 @@ export async function GET() {
       /* ignore */
     }
   }
+
   return NextResponse.json({
     databaseUrlConfigured: hasUrl,
+    hostHint,
     envKeysPresent: {
       DATABASE_URL: Boolean(process.env.DATABASE_URL),
       POSTGRES_URL: Boolean(process.env.POSTGRES_URL),

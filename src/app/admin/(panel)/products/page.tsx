@@ -1,56 +1,194 @@
 import Link from "next/link";
-import { MOCK_ITEMS } from "@/lib/mock-data";
-import { formatPrice, formatCompact } from "@/lib/utils";
+import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { listProductCards } from "@/lib/product-store";
+import { query } from "@/lib/db";
+import { MOCK_ITEMS } from "@/lib/mock-data";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Products · Admin" };
 
-export default function AdminProductsPage() {
+type Row = {
+  id: string;
+  slug: string;
+  title: string;
+  regularPrice: number;
+  extendedPrice: number;
+  categoryName?: string;
+  status?: string;
+  source: "db" | "mock";
+};
+
+export default async function AdminProductsPage() {
+  const rows: Row[] = [];
+  const seen = new Set<string>();
+
+  try {
+    const { rows: dbRows } = await query<{
+      id: string;
+      slug: string;
+      title: string;
+      regularPrice: number | string;
+      extendedPrice: number | string;
+      status: string;
+      categoryName: string | null;
+    }>(`
+      SELECT i.id, i.slug, i.title, i."regularPrice", i."extendedPrice",
+             i.status::text AS status, c.name AS "categoryName"
+      FROM "Item" i
+      LEFT JOIN "Category" c ON c.id = i."categoryId"
+      ORDER BY i."updatedAt" DESC
+      LIMIT 200
+    `);
+    for (const r of dbRows) {
+      seen.add(r.slug);
+      rows.push({
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        regularPrice: Number(r.regularPrice),
+        extendedPrice: Number(r.extendedPrice),
+        categoryName: r.categoryName || "—",
+        status: r.status || "APPROVED",
+        source: "db",
+      });
+    }
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    const cards = await listProductCards();
+    for (const c of cards) {
+      if (seen.has(c.slug)) continue;
+      seen.add(c.slug);
+      rows.push({
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        regularPrice: Number(c.regularPrice),
+        extendedPrice: Number(c.extendedPrice),
+        categoryName: c.category?.name || "—",
+        status: "LIVE",
+        source: "mock",
+      });
+    }
+  } catch {
+    for (const c of MOCK_ITEMS) {
+      if (seen.has(c.slug)) continue;
+      rows.push({
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        regularPrice: Number(c.regularPrice),
+        extendedPrice: Number(c.extendedPrice),
+        categoryName: c.category.name,
+        status: "MOCK",
+        source: "mock",
+      });
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Products</h1>
-          <p className="text-sm text-slate-500">Manage marketplace items · Regular & Extended · Free or paid</p>
+          <p className="text-sm text-slate-500">
+            Live data from Supabase · Free &amp; paid · Edit opens the DB record
+          </p>
         </div>
         <Link href="/admin/products/new">
-          <Button><Plus className="h-4 w-4" /> Add product</Button>
+          <Button>
+            <Plus className="h-4 w-4" /> Add product
+          </Button>
         </Link>
       </div>
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Category</th>
-              <th className="px-4 py-3">Regular</th>
-              <th className="px-4 py-3">Extended</th>
-              <th className="px-4 py-3">Sales</th>
-              <th className="px-4 py-3">Rating</th>
+              <th className="px-4 py-3">Price</th>
+              <th className="px-4 py-3">Source</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {MOCK_ITEMS.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50/50">
-                <td className="max-w-xs px-4 py-3">
-                  <Link href={`/item/${item.slug}/${item.id}`} className="line-clamp-1 font-medium hover:text-emerald-700">{item.title}</Link>
-                  <div className="text-xs text-slate-400">{item.slug}</div>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{item.category.name}</td>
-                <td className="px-4 py-3">{formatPrice(Number(item.regularPrice))}</td>
-                <td className="px-4 py-3">{formatPrice(Number(item.extendedPrice))}</td>
-                <td className="px-4 py-3">{formatCompact(item.salesCount)}</td>
-                <td className="px-4 py-3">{item.ratingAvg.toFixed(1)}</td>
-                <td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Live</span></td>
-                <td className="space-x-2 px-4 py-3">
-                  <Link href={`/admin/products/${item.id}/edit`} className="text-xs font-medium text-emerald-600 hover:underline">Edit</Link>
-                  <Link href={`/item/${item.slug}/${item.id}`} className="text-xs text-slate-500 hover:underline">View</Link>
+            {rows.map((item) => {
+              const free = Number(item.regularPrice) <= 0;
+              return (
+                <tr key={item.slug + item.id} className="hover:bg-slate-50/50">
+                  <td className="max-w-xs px-4 py-3">
+                    <Link
+                      href={`/item/${item.slug}/${item.id}`}
+                      className="line-clamp-1 font-medium hover:text-emerald-700"
+                    >
+                      {item.title}
+                    </Link>
+                    <div className="text-xs text-slate-400">{item.slug}</div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{item.categoryName}</td>
+                  <td className="px-4 py-3">
+                    {free ? (
+                      <span className="font-semibold text-emerald-700">Free</span>
+                    ) : (
+                      <>
+                        {formatPrice(Number(item.regularPrice))}
+                        <span className="text-xs text-slate-400">
+                          {" "}
+                          / {formatPrice(Number(item.extendedPrice))}
+                        </span>
+                      </>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={
+                        item.source === "db"
+                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+                          : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                      }
+                    >
+                      {item.source === "db" ? "Database" : "Catalog"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
+                      {item.status || "—"}
+                    </span>
+                  </td>
+                  <td className="space-x-2 px-4 py-3">
+                    <Link
+                      href={`/admin/products/${item.id}/edit`}
+                      className="text-xs font-medium text-emerald-600 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                    <Link
+                      href={`/item/${item.slug}/${item.id}`}
+                      className="text-xs text-slate-500 hover:underline"
+                    >
+                      View
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  No products yet.{" "}
+                  <Link href="/admin/products/new" className="text-emerald-600 hover:underline">
+                    Add one
+                  </Link>
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

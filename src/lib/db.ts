@@ -3,7 +3,7 @@ import { Pool, type QueryResultRow } from "pg";
 function cleanDatabaseUrl(raw?: string): string {
   if (!raw) {
     throw new Error(
-      "DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables (Production) and redeploy."
+      "DATABASE_URL (or POSTGRES_URL) is not set. In Vercel add DATABASE_URL = same value as POSTGRES_URL, then redeploy."
     );
   }
   try {
@@ -18,11 +18,22 @@ function cleanDatabaseUrl(raw?: string): string {
   }
 }
 
+/** Prefer DATABASE_URL; fall back to Vercel/Supabase integration names */
+function resolveDatabaseUrl(): string | undefined {
+  return (
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.POSTGRES_URL_NON_POOLING
+  );
+}
+
 const globalForDb = globalThis as unknown as { __pgPool?: Pool };
 
 function getPool(): Pool {
   if (!globalForDb.__pgPool) {
-    const connectionString = cleanDatabaseUrl(process.env.DATABASE_URL);
+    const connectionString = cleanDatabaseUrl(resolveDatabaseUrl());
     globalForDb.__pgPool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
@@ -51,13 +62,13 @@ export async function queryOne<T extends QueryResultRow = QueryResultRow>(
   return rows[0] ?? null;
 }
 
-export async function dbPing(): Promise<boolean> {
+export async function dbPing(): Promise<{ ok: boolean; error?: string }> {
   try {
     await query("SELECT 1 AS ok");
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
   }
 }
 
-export { cleanDatabaseUrl };
+export { cleanDatabaseUrl, resolveDatabaseUrl };

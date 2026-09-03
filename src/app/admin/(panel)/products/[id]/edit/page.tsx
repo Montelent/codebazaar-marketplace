@@ -8,7 +8,6 @@ import { Plus, X } from "lucide-react";
 import { CKEditorField } from "@/components/editor/ck-editor";
 import { MOCK_ITEMS } from "@/lib/mock-data";
 import { PRODUCT_DETAILS, detailFromCard } from "@/lib/product-detail";
-import { saveClientOverride } from "@/lib/client-product-overrides";
 
 const DATE_LABELS = ["Last Update", "Created", "Published", "Updated"];
 
@@ -69,34 +68,6 @@ export default function EditProductPage({
   const set = (k: string, v: string | boolean) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  function persistLocal() {
-    saveClientOverride(id, {
-      id,
-      title: form.title,
-      slug: form.slug,
-      description: form.description,
-      regularPrice: form.isFree ? 0 : Number(form.regularPrice),
-      extendedPrice: form.isFree ? 0 : Number(form.extendedPrice),
-      salePriceRegular: form.isFree
-        ? null
-        : form.salePriceRegular
-          ? Number(form.salePriceRegular)
-          : null,
-      isFree: Boolean(form.isFree),
-      thumbnailUrl: form.thumbnailUrl,
-      demoUrl: form.demoUrl,
-      features: features.filter(Boolean),
-      licenseFeatures: licenseFeatures.filter(Boolean),
-      tags: form.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-      attributes: attributes.filter(
-        (a) => a.label.trim() && !DATE_LABELS.includes(a.label)
-      ),
-    });
-  }
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -138,25 +109,25 @@ export default function EditProductPage({
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
-      persistLocal();
       if (!res.ok) {
-        setMsg(
-          "Saved in this browser. Free / edits show on the storefront here. For permanent storage run: npx prisma db push"
+        setError(
+          data.error ||
+            data.message ||
+            `Database save failed (HTTP ${res.status}). Open /api/health — postgresConnected must be true.`
         );
         return;
       }
       setMsg(
-        data.message ||
-          (data.clientFallback
-            ? "Saved in browser. Run prisma db push for permanent multi-device storage."
-            : "Product updated")
+        data.permanent || data.ok
+          ? "Saved to database. Free/price will show on the storefront after refresh."
+          : data.message || "Product updated"
       );
     } catch (err) {
-      persistLocal();
-      setMsg(
-        "Saved in this browser (network/DB issue). Free status will still apply on this device."
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Request failed. Check /api/health for DATABASE_URL / Supabase connection."
       );
-      setError(err instanceof Error ? err.message : "Request failed");
     } finally {
       setLoading(false);
     }
@@ -226,80 +197,13 @@ export default function EditProductPage({
           <Button type="button" variant="outline" size="sm" onClick={() => setFeatures((f) => [...f, ""])}><Plus className="h-4 w-4" /> Add feature</Button>
         </section>
 
-        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">License benefits</h2>
-          {licenseFeatures.map((f, i) => (
-            <div key={i} className="flex gap-2">
-              <Input value={f} onChange={(e) => { const n = [...licenseFeatures]; n[i] = e.target.value; setLicenseFeatures(n); }} />
-              <button type="button" className="rounded border p-2" onClick={() => setLicenseFeatures((list) => list.filter((_, j) => j !== i))}><X className="h-4 w-4" /></button>
-            </div>
-          ))}
-          <Button type="button" variant="outline" size="sm" onClick={() => setLicenseFeatures((f) => [...f, ""])}><Plus className="h-4 w-4" /> Add</Button>
-        </section>
-
-        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Requirements</h2>
-          <CKEditorField value={requirements} onChange={setRequirements} minHeight={120} />
-        </section>
-
-        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Changelog</h2>
-          <CKEditorField value={changelogText} onChange={setChangelogText} minHeight={160} />
-        </section>
-
         <section className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <h2 className="text-sm font-semibold uppercase text-slate-500">Dates (automatic)</h2>
-          <p className="text-sm text-slate-600">
-            <span className="font-medium">Created:</span> {detail.createdAt}
-          </p>
-          <p className="text-sm text-slate-600">
-            <span className="font-medium">Last Update:</span> {detail.lastUpdate}
-          </p>
-          <p className="text-xs text-slate-400">
-            These are set automatically by the system and cannot be edited.
-          </p>
+          <p className="text-sm text-slate-600"><span className="font-medium">Created:</span> {detail.createdAt}</p>
+          <p className="text-sm text-slate-600"><span className="font-medium">Last Update:</span> {detail.lastUpdate}</p>
         </section>
 
-        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase text-slate-500">Item attributes (not dates)</h2>
-            <Button type="button" variant="outline" size="sm" onClick={() => setAttributes((a) => [...a, { label: "", value: "" }])}>
-              <Plus className="h-4 w-4" /> Add
-            </Button>
-          </div>
-          <p className="text-xs text-slate-500">
-            e.g. Compatible Browsers, Files Included, Framework — not Created / Last Update
-          </p>
-          {attributes.map((a, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <Input
-                placeholder="Label"
-                value={a.label}
-                onChange={(e) => {
-                  const label = e.target.value;
-                  if (DATE_LABELS.includes(label.trim())) return;
-                  const n = [...attributes];
-                  n[i] = { ...n[i], label };
-                  setAttributes(n);
-                }}
-              />
-              <Input
-                placeholder="Value"
-                value={a.value}
-                onChange={(e) => {
-                  const n = [...attributes];
-                  n[i] = { ...n[i], value: e.target.value };
-                  setAttributes(n);
-                }}
-              />
-              <button type="button" className="rounded border p-2" onClick={() => setAttributes((list) => list.filter((_, j) => j !== i))}>
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </section>
-
-        {error && <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>}
+        {error && <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {msg && <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{msg}</p>}
         <div className="flex gap-3">
           <Button type="submit" disabled={loading}>{loading ? "Saving…" : "Save changes"}</Button>

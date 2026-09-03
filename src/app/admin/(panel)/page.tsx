@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatCompact, formatPrice } from "@/lib/utils";
 import { queryOne } from "@/lib/db";
+import { listProductCards } from "@/lib/product-store";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dashboard · Admin" };
@@ -33,17 +34,24 @@ export default async function AdminDashboardPage() {
   let freeItems = 0;
   let avgPrice = 0;
   let orderCount = 0;
+  let publishedInDb = 0;
 
   try {
-    const stats = await queryOne<{ n: string; free: string; avg: string }>(`
-      SELECT COUNT(*)::text AS n,
-             COUNT(*) FILTER (WHERE "regularPrice" <= 0)::text AS free,
-             COALESCE(AVG("regularPrice"), 0)::text AS avg
-      FROM "Item"
-    `);
-    totalItems = Number(stats?.n || 0);
-    freeItems = Number(stats?.free || 0);
-    avgPrice = Number(stats?.avg || 0);
+    const cards = await listProductCards();
+    totalItems = cards.length;
+    freeItems = cards.filter((c) => Number(c.regularPrice) <= 0).length;
+    const paid = cards.filter((c) => Number(c.regularPrice) > 0);
+    avgPrice =
+      paid.length > 0
+        ? paid.reduce((s, c) => s + Number(c.regularPrice), 0) / paid.length
+        : 0;
+  } catch {
+    /* empty */
+  }
+
+  try {
+    const stats = await queryOne<{ n: string }>(`SELECT COUNT(*)::text AS n FROM "Item"`);
+    publishedInDb = Number(stats?.n || 0);
   } catch {
     /* empty */
   }
@@ -82,6 +90,12 @@ export default async function AdminDashboardPage() {
           </div>
         ))}
       </div>
+      {publishedInDb > 0 && (
+        <p className="text-xs text-slate-500">
+          {publishedInDb} product record{publishedInDb === 1 ? "" : "s"} saved in the database
+          (edits &amp; new items).
+        </p>
+      )}
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
           Quick links

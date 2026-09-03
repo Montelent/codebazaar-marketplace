@@ -1,23 +1,35 @@
 import { NextResponse } from "next/server";
-import { dbPing, query, resolveDatabaseUrl } from "@/lib/db";
+import {
+  dbPing,
+  query,
+  resolveDatabaseUrl,
+  diagnoseDatabaseUrl,
+  cleanDatabaseUrl,
+} from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const raw = resolveDatabaseUrl();
-  const hasUrl = Boolean(raw);
+  const diag = diagnoseDatabaseUrl(raw);
+
+  let cleanedOk = false;
+  let cleanError: string | undefined;
   let hostHint: string | null = null;
-  if (raw) {
-    try {
-      const cleaned = String(raw).trim().replace(/^['"]|['"]$/g, "");
-      hostHint = new URL(cleaned).hostname;
-    } catch {
-      hostHint = "unparseable";
+  try {
+    if (raw) {
+      const cleaned = cleanDatabaseUrl(raw);
+      cleanedOk = true;
+      const hostMatch = cleaned.match(/@([^/?]+)/);
+      hostHint = hostMatch?.[1] ?? null;
     }
+  } catch (e) {
+    cleanError = e instanceof Error ? e.message : "clean failed";
   }
 
   let tables: string[] = [];
-  const ping = await dbPing();
+  const ping = cleanedOk ? await dbPing() : { ok: false, error: cleanError || "no url" };
+
   if (ping.ok) {
     try {
       const { rows } = await query<{ tablename: string }>(
@@ -30,8 +42,10 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    databaseUrlConfigured: hasUrl,
+    databaseUrlConfigured: Boolean(raw),
     hostHint,
+    urlDiagnostics: diag,
+    cleanedOk,
     envKeysPresent: {
       DATABASE_URL: Boolean(process.env.DATABASE_URL),
       POSTGRES_URL: Boolean(process.env.POSTGRES_URL),
@@ -39,7 +53,13 @@ export async function GET() {
     },
     postgresConnected: ping.ok,
     tables,
-    error: ping.error,
+    error: ping.error || cleanError,
     engine: "pg (no Prisma)",
+    tip:
+      !diag.startsWithPostgres
+        ? "DATABASE_URL does not start with postgresql:// — re-copy URI from Supabase → Settings → Database → Connection string (URI)."
+        : !ping.ok
+          ? "URL shape looks closer; check password special characters or use Transaction pooler port 6543."
+          : undefined,
   });
 }

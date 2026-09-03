@@ -1,44 +1,74 @@
 import { Pool, type QueryResultRow } from "pg";
 
-function cleanDatabaseUrl(raw?: string): string {
-  if (!raw) {
-    throw new Error(
-      "DATABASE_URL (or POSTGRES_URL) is not set. In Vercel set DATABASE_URL to the same value as POSTGRES_URL, then redeploy."
-    );
+function stripWrappingQuotes(s: string): string {
+  let t = s.trim();
+  // repeated quote stripping
+  for (let i = 0; i < 3; i++) {
+    if (
+      (t.startsWith('"') && t.endsWith('"')) ||
+      (t.startsWith("'") && t.endsWith("'"))
+    ) {
+      t = t.slice(1, -1).trim();
+    } else break;
   }
-  // Vercel/UI paste issues: quotes, whitespace, accidental newlines
-  let s = String(raw).trim();
-  if (
-    (s.startsWith('"') && s.endsWith('"')) ||
-    (s.startsWith("'") && s.endsWith("'"))
-  ) {
-    s = s.slice(1, -1).trim();
-  }
-  s = s.replace(/\s+/g, "");
-
-  if (!s.startsWith("postgres://") && !s.startsWith("postgresql://")) {
-    throw new Error(
-      "DATABASE_URL must start with postgresql:// — current value is not a valid Postgres URI"
-    );
-  }
-
-  try {
-    const u = new URL(s);
-    u.searchParams.delete("channel_binding");
-    if (!u.searchParams.has("sslmode")) {
-      u.searchParams.set("sslmode", "require");
-    }
-    return u.toString();
-  } catch {
-    // Fallback strip
-    return s
-      .replace(/[?&]channel_binding=require/g, "")
-      .replace(/\?&/, "?")
-      .replace(/\?$/, "");
-  }
+  return t;
 }
 
-function resolveDatabaseUrl(): string | undefined {
+/**
+ * Normalize a Postgres connection string from Vercel/Supabase env paste issues.
+ */
+export function cleanDatabaseUrl(raw?: string): string {
+  if (!raw) {
+    throw new Error(
+      "DATABASE_URL / POSTGRES_URL missing. Set DATABASE_URL in Vercel to a postgresql:// URI."
+    );
+  }
+
+  let s = stripWrappingQuotes(String(raw));
+  // remove BOM / zero-width / newlines / tabs
+  s = s.replace(/^\uFEFF/, "").replace(/[\r\n\t]+/g, "").trim();
+  s = stripWrappingQuotes(s);
+
+  // If someone pasted KEY=value
+  if (/^(DATABASE_URL|POSTGRES_URL|POSTGRES_PRISMA_URL)=/i.test(s)) {
+    s = s.replace(/^[^=]+=/, "");
+    s = stripWrappingQuotes(s);
+  }
+
+  // Sometimes integration stores a JSON string
+  if (s.startsWith("{")) {
+    try {
+      const j = JSON.parse(s) as Record<string, string>;
+      s =
+        j.DATABASE_URL ||
+        j.POSTGRES_URL ||
+        j.uri ||
+        j.connectionString ||
+        s;
+      s = stripWrappingQuotes(String(s));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!/^postgres(ql)?:\/\//i.test(s)) {
+    throw new Error(
+      "DATABASE_URL must start with postgresql:// (got something else — re-copy from Supabase Database settings)"
+    );
+  }
+
+  // Ensure sslmode; drop channel_binding without full URL parse if password has special chars
+  s = s.replace(/[?&]channel_binding=require/gi, "");
+  if (!/[?&]sslmode=/i.test(s)) {
+    s += s.includes("?") ? "&sslmode=require" : "?sslmode=require";
+  }
+  // tidy ?&
+  s = s.replace(/\?&/, "?").replace(/&&+/g, "&");
+
+  return s;
+}
+
+export function resolveDatabaseUrl(): string | undefined {
   const candidates = [
     process.env.DATABASE_URL,
     process.env.POSTGRES_URL,
@@ -48,10 +78,33 @@ function resolveDatabaseUrl(): string | undefined {
   ];
   for (const c of candidates) {
     if (!c) continue;
-    const t = String(c).trim().replace(/^['"]|['"]$/g, "");
-    if (t.startsWith("postgres")) return t;
+    const t = stripWrappingQuotes(String(c)).replace(/[\r\n\t]+/g, "");
+    if (/^postgres(ql)?:\/\//i.test(t) || t.startsWith("{")) return c;
   }
-  return undefined;
+  // return first non-empty for diagnostics
+  return candidates.find((c) => c && String(c).trim()) as string | undefined;
+}
+
+/** Safe diagnostics — never returns password */
+export function diagnoseDatabaseUrl(raw?: string): {
+  length: number;
+  startsWithPostgres: boolean;
+  hasWhitespace: boolean;
+  hasQuotes: boolean;
+  hasNewline: boolean;
+  prefix: string;
+  looksLikeJson: boolean;
+} {
+  const s = raw == null ? "" : String(raw);
+  return {
+    length: s.length,
+    startsWithPostgres: /^[\s"']*postgres(ql)?:\/\//i.test(s),
+    hasWhitespace: /\s/.test(s.trim()),
+    hasQuotes: /^["']/.test(s.trim()) || /["']$/.test(s.trim()),
+    hasNewline: /[\r\n]/.test(s),
+    prefix: s.trim().slice(0, 24).replace(/:[^:@/]+@/, ":***@"),
+    looksLikeJson: s.trim().startsWith("{"),
+  };
 }
 
 const globalForDb = globalThis as unknown as { __pgPool?: Pool };
@@ -95,5 +148,3 @@ export async function dbPing(): Promise<{ ok: boolean; error?: string }> {
     return { ok: false, error: e instanceof Error ? e.message : "unknown" };
   }
 }
-
-export { cleanDatabaseUrl, resolveDatabaseUrl };

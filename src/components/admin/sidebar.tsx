@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Package,
@@ -15,13 +16,24 @@ import {
   Home,
 } from "lucide-react";
 
-type NavItem =
-  | { href: string; label: string; icon: typeof Package; exact?: boolean }
-  | {
-      label: string;
-      icon: typeof Package;
-      children: { href: string; label: string }[];
-    };
+type NavLink = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  icon: LucideIcon;
+  children: { href: string; label: string }[];
+};
+
+type NavItem = NavLink | NavGroup;
+
+function isNavGroup(item: NavItem): item is NavGroup {
+  return "children" in item && Array.isArray(item.children);
+}
 
 const NAV: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -82,7 +94,7 @@ export function AdminSidebar() {
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto p-3 text-sm">
         {NAV.map((item) => {
-          if ("children" in item && item.children) {
+          if (isNavGroup(item)) {
             return (
               <div key={item.label} className="pt-2">
                 <div className="mb-1 flex items-center gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -110,6 +122,7 @@ export function AdminSidebar() {
               </div>
             );
           }
+
           const active = isActive(pathname, item.href, item.exact);
           return (
             <Link

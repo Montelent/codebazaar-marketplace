@@ -2,7 +2,6 @@ import { Pool, type QueryResultRow } from "pg";
 
 function stripWrappingQuotes(s: string): string {
   let t = s.trim();
-  // repeated quote stripping
   for (let i = 0; i < 3; i++) {
     if (
       (t.startsWith('"') && t.endsWith('"')) ||
@@ -15,7 +14,9 @@ function stripWrappingQuotes(s: string): string {
 }
 
 /**
- * Normalize a Postgres connection string from Vercel/Supabase env paste issues.
+ * Normalize Postgres URL for Vercel + Supabase pooler.
+ * Newer `pg` treats sslmode=require as verify-full, which breaks on pooler chains.
+ * We strip sslmode from the URI and set ssl.rejectUnauthorized=false on the Pool.
  */
 export function cleanDatabaseUrl(raw?: string): string {
   if (!raw) {
@@ -25,27 +26,19 @@ export function cleanDatabaseUrl(raw?: string): string {
   }
 
   let s = stripWrappingQuotes(String(raw));
-  // remove BOM / zero-width / newlines / tabs
   s = s.replace(/^\uFEFF/, "").replace(/[\r\n\t]+/g, "").trim();
   s = stripWrappingQuotes(s);
 
-  // If someone pasted KEY=value
   if (/^(DATABASE_URL|POSTGRES_URL|POSTGRES_PRISMA_URL)=/i.test(s)) {
-    s = s.replace(/^[^=]+=/, "");
-    s = stripWrappingQuotes(s);
+    s = stripWrappingQuotes(s.replace(/^[^=]+=/, ""));
   }
 
-  // Sometimes integration stores a JSON string
   if (s.startsWith("{")) {
     try {
       const j = JSON.parse(s) as Record<string, string>;
-      s =
-        j.DATABASE_URL ||
-        j.POSTGRES_URL ||
-        j.uri ||
-        j.connectionString ||
-        s;
-      s = stripWrappingQuotes(String(s));
+      s = stripWrappingQuotes(
+        String(j.DATABASE_URL || j.POSTGRES_URL || j.uri || j.connectionString || s)
+      );
     } catch {
       /* ignore */
     }
@@ -53,17 +46,16 @@ export function cleanDatabaseUrl(raw?: string): string {
 
   if (!/^postgres(ql)?:\/\//i.test(s)) {
     throw new Error(
-      "DATABASE_URL must start with postgresql:// (got something else — re-copy from Supabase Database settings)"
+      "DATABASE_URL must start with postgresql:// — re-copy URI from Supabase."
     );
   }
 
-  // Ensure sslmode; drop channel_binding without full URL parse if password has special chars
-  s = s.replace(/[?&]channel_binding=require/gi, "");
-  if (!/[?&]sslmode=/i.test(s)) {
-    s += s.includes("?") ? "&sslmode=require" : "?sslmode=require";
-  }
-  // tidy ?&
-  s = s.replace(/\?&/, "?").replace(/&&+/g, "&");
+  // Remove SSL mode flags that force cert verification under new pg
+  s = s.replace(/[?&]sslmode=[^&]*/gi, "");
+  s = s.replace(/[?&]channel_binding=[^&]*/gi, "");
+  s = s.replace(/[?&]ssl=[^&]*/gi, "");
+  // tidy query string
+  s = s.replace(/\?&+/g, "?").replace(/&&+/g, "&").replace(/\?$/, "").replace(/&$/, "");
 
   return s;
 }
@@ -81,11 +73,9 @@ export function resolveDatabaseUrl(): string | undefined {
     const t = stripWrappingQuotes(String(c)).replace(/[\r\n\t]+/g, "");
     if (/^postgres(ql)?:\/\//i.test(t) || t.startsWith("{")) return c;
   }
-  // return first non-empty for diagnostics
   return candidates.find((c) => c && String(c).trim()) as string | undefined;
 }
 
-/** Safe diagnostics — never returns password */
 export function diagnoseDatabaseUrl(raw?: string): {
   length: number;
   startsWithPostgres: boolean;
@@ -102,7 +92,7 @@ export function diagnoseDatabaseUrl(raw?: string): {
     hasWhitespace: /\s/.test(s.trim()),
     hasQuotes: /^["']/.test(s.trim()) || /["']$/.test(s.trim()),
     hasNewline: /[\r\n]/.test(s),
-    prefix: s.trim().slice(0, 24).replace(/:[^:@/]+@/, ":***@"),
+    prefix: s.trim().slice(0, 28).replace(/:[^:@/]+@/, ":***@"),
     looksLikeJson: s.trim().startsWith("{"),
   };
 }
@@ -114,6 +104,7 @@ function getPool(): Pool {
     const connectionString = cleanDatabaseUrl(resolveDatabaseUrl());
     globalForDb.__pgPool = new Pool({
       connectionString,
+      // Required for Supabase / Neon on Vercel (certificate chain)
       ssl: { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 20_000,

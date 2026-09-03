@@ -22,6 +22,17 @@ export default async function HomePage() {
   );
   const heroImage = String(s["homepage.heroImageUrl"] ?? "");
   const heroBg = String(s["homepage.heroBgColor"] ?? "#0f172a");
+  const useGradient = Boolean(s["homepage.heroUseGradient"]);
+  const gradientRaw = String(s["homepage.heroGradient"] ?? "#0f172a|#059669|135");
+  let heroBackground: string = heroBg;
+  if (useGradient) {
+    if (gradientRaw.includes("gradient")) {
+      heroBackground = gradientRaw;
+    } else {
+      const [from, to, angle] = gradientRaw.split("|");
+      heroBackground = `linear-gradient(${angle || 135}deg, ${from || "#0f172a"}, ${to || "#059669"})`;
+    }
+  }
   const overlay = Number(s["homepage.heroOverlay"] ?? 0.55);
   const buttonColor = String(s["homepage.buttonColor"] ?? "#059669");
   const buttonText = String(s["homepage.buttonTextColor"] ?? "#ffffff");
@@ -39,7 +50,14 @@ export default async function HomePage() {
 
   return (
     <div className="pb-16">
-      <section className="relative overflow-hidden text-white" style={{ backgroundColor: heroBg }}>
+      <section
+        className="relative overflow-hidden text-white"
+        style={
+          useGradient
+            ? { backgroundImage: heroBackground }
+            : { backgroundColor: heroBg }
+        }
+      >
         {heroImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -52,13 +70,15 @@ export default async function HomePage() {
         />
         <div className="relative mx-auto max-w-7xl px-4 py-20 sm:py-28">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="mb-2 text-sm font-medium text-slate-300">{siteName}</p>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+            <p className="mb-2 text-sm font-medium" style={{ color: accent }}>
+              {siteName}
+            </p>
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
               {titleParts[0]}
-              {heroHighlight && heroTitle.includes(heroHighlight) ? (
+              {heroHighlight && titleParts.length > 1 ? (
                 <span style={{ color: accent }}>{heroHighlight}</span>
               ) : null}
-              {titleParts[1]}
+              {titleParts[1] || ""}
             </h1>
             <p className="mt-4 text-lg text-slate-200">{heroSubtitle}</p>
             <form
@@ -96,7 +116,9 @@ export default async function HomePage() {
               className="group rounded-xl border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:shadow-md"
             >
               <span className="text-2xl">{cat.icon}</span>
-              <h3 className="mt-2 font-semibold text-slate-900 group-hover:text-emerald-700">{cat.name}</h3>
+              <h3 className="mt-2 font-semibold text-slate-900 group-hover:text-emerald-700">
+                {cat.name}
+              </h3>
               <p className="mt-1 line-clamp-2 text-xs text-slate-500">{cat.description}</p>
             </Link>
           ))}
@@ -107,7 +129,10 @@ export default async function HomePage() {
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-2xl font-bold text-slate-900">Featured items</h2>
-            <Link href="/search" className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:underline">
+            <Link
+              href="/search"
+              className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:underline"
+            >
               View all <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -120,7 +145,15 @@ export default async function HomePage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 py-12">
-        <h2 className="mb-6 text-2xl font-bold text-slate-900">Weekly bestsellers</h2>
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-slate-900">Bestsellers</h2>
+          <Link
+            href="/search"
+            className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:underline"
+          >
+            View all <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {bestsellers.map((item) => (
             <ItemCard key={item.id} item={item} />
@@ -128,29 +161,33 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white py-12">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 sm:grid-cols-3">
-          <div className="text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-              <Star className="h-6 w-6 text-emerald-600" />
+      <section className="border-t border-slate-200 bg-slate-50 py-12">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:grid-cols-3">
+          {[
+            {
+              icon: Shield,
+              title: "Quality checked",
+              text: "Every item is reviewed before it goes live.",
+            },
+            {
+              icon: BookOpen,
+              title: "Docs & support",
+              text: "Clear documentation and author support options.",
+            },
+            {
+              icon: Star,
+              title: "Trusted marketplace",
+              text: "Thousands of downloads from creators worldwide.",
+            },
+          ].map((b) => (
+            <div key={b.title} className="flex gap-3">
+              <b.icon className="h-8 w-8 shrink-0 text-emerald-600" />
+              <div>
+                <h3 className="font-semibold text-slate-900">{b.title}</h3>
+                <p className="mt-1 text-sm text-slate-600">{b.text}</p>
+              </div>
             </div>
-            <h3 className="mt-4 font-semibold text-slate-900">Home of popular scripts</h3>
-            <p className="mt-2 text-sm text-slate-600">Thousands of battle-tested items trusted by developers and agencies.</p>
-          </div>
-          <div className="text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-              <BookOpen className="h-6 w-6 text-emerald-600" />
-            </div>
-            <h3 className="mt-4 font-semibold text-slate-900">Clear docs & support</h3>
-            <p className="mt-2 text-sm text-slate-600">Every item ships with documentation and author support channels.</p>
-          </div>
-          <div className="text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-              <Shield className="h-6 w-6 text-emerald-600" />
-            </div>
-            <h3 className="mt-4 font-semibold text-slate-900">Quality-reviewed creators</h3>
-            <p className="mt-2 text-sm text-slate-600">Every submission is reviewed before it reaches the marketplace.</p>
-          </div>
+          ))}
         </div>
       </section>
     </div>

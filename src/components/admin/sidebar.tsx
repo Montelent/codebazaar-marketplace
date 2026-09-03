@@ -14,70 +14,71 @@ import {
   Users,
   UserCircle,
   Home,
+  FolderTree,
+  Tags,
+  ListChecks,
+  PlusCircle,
+  CreditCard,
+  Search,
+  Palette,
+  Menu,
 } from "lucide-react";
 
-type NavLink = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  exact?: boolean;
-};
+type LinkItem = { href: string; label: string; icon?: LucideIcon };
 
-type NavGroup = {
-  label: string;
-  icon: LucideIcon;
-  children: { href: string; label: string }[];
-};
-
-type NavItem = NavLink | NavGroup;
-
-function isNavGroup(item: NavItem): item is NavGroup {
-  return "children" in item && Array.isArray(item.children);
-}
-
-const NAV: NavItem[] = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
+const SECTIONS: { title: string; items: LinkItem[] }[] = [
   {
-    label: "Catalog",
-    icon: Package,
-    children: [
-      { href: "/admin/products", label: "Products" },
-      { href: "/admin/products/new", label: "Add product" },
-      { href: "/admin/categories", label: "Categories" },
-      { href: "/admin/tags", label: "Tags" },
-      { href: "/admin/attributes", label: "Attributes" },
-    ],
+    title: "Overview",
+    items: [{ href: "/admin", label: "Dashboard", icon: LayoutDashboard }],
   },
-  { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
-  { href: "/admin/authors", label: "Authors & Editors", icon: UserCircle },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/blog", label: "Blog", icon: Newspaper },
-  { href: "/admin/pages", label: "Pages", icon: FileText },
   {
-    label: "Storefront",
-    icon: Home,
-    children: [
-      { href: "/admin/settings/homepage", label: "Homepage content" },
-      { href: "/admin/settings/appearance", label: "Colors & hero" },
-      { href: "/admin/settings/navigation", label: "Menus" },
-      { href: "/admin/settings/header-footer", label: "Header & Footer" },
+    title: "Products",
+    items: [
+      { href: "/admin/products", label: "All products", icon: Package },
+      { href: "/admin/products/new", label: "Add product", icon: PlusCircle },
+      { href: "/admin/categories", label: "Categories", icon: FolderTree },
+      { href: "/admin/tags", label: "Tags", icon: Tags },
+      { href: "/admin/attributes", label: "Attributes", icon: ListChecks },
     ],
   },
   {
-    label: "Settings",
-    icon: Settings,
-    children: [
-      { href: "/admin/settings", label: "All settings" },
-      { href: "/admin/settings/general", label: "General" },
-      { href: "/admin/settings/seo", label: "Technical SEO" },
-      { href: "/admin/settings/schema", label: "Schema markup" },
-      { href: "/admin/settings/payments", label: "Payments" },
+    title: "Sales & people",
+    items: [
+      { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
+      { href: "/admin/authors", label: "Authors", icon: UserCircle },
+      { href: "/admin/users", label: "Users", icon: Users },
+    ],
+  },
+  {
+    title: "Content",
+    items: [
+      { href: "/admin/blog", label: "Blog", icon: Newspaper },
+      { href: "/admin/pages", label: "Pages", icon: FileText },
+    ],
+  },
+  {
+    title: "Storefront",
+    items: [
+      { href: "/admin/settings/homepage", label: "Homepage", icon: Home },
+      { href: "/admin/settings/appearance", label: "Colors & hero", icon: Palette },
+      { href: "/admin/settings/navigation", label: "Menus", icon: Menu },
+      { href: "/admin/settings/header-footer", label: "Header & footer", icon: FileText },
+    ],
+  },
+  {
+    title: "Settings",
+    items: [
+      { href: "/admin/settings", label: "All settings", icon: Settings },
+      { href: "/admin/settings/general", label: "General", icon: Settings },
+      { href: "/admin/settings/seo", label: "SEO", icon: Search },
+      { href: "/admin/settings/schema", label: "Schema", icon: ListChecks },
+      { href: "/admin/settings/payments", label: "Payments", icon: CreditCard },
     ],
   },
 ];
 
-function isActive(pathname: string, href: string, exact?: boolean) {
-  if (exact) return pathname === href;
+function active(pathname: string, href: string) {
+  if (href === "/admin") return pathname === "/admin";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
@@ -92,53 +93,35 @@ export function AdminSidebar() {
           Admin
         </span>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3 text-sm">
-        {NAV.map((item) => {
-          if (isNavGroup(item)) {
-            return (
-              <div key={item.label} className="pt-2">
-                <div className="mb-1 flex items-center gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  <item.icon className="h-3.5 w-3.5" />
-                  {item.label}
-                </div>
-                <div className="space-y-0.5">
-                  {item.children.map((child) => {
-                    const active = isActive(pathname, child.href);
-                    return (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={
-                          active
-                            ? "block rounded-md bg-emerald-600/20 px-3 py-1.5 font-medium text-emerald-300"
-                            : "block rounded-md px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
-                        }
-                      >
-                        {child.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          }
-
-          const active = isActive(pathname, item.href, item.exact);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={
-                active
-                  ? "flex items-center gap-2 rounded-md bg-emerald-600/20 px-3 py-2 font-medium text-emerald-300"
-                  : "flex items-center gap-2 rounded-md px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-white"
-              }
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 space-y-4 overflow-y-auto p-3 pb-8 text-sm">
+        {SECTIONS.map((section) => (
+          <div key={section.title}>
+            <p className="mb-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-emerald-500/90">
+              {section.title}
+            </p>
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const on = active(pathname, item.href);
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={
+                        on
+                          ? "flex items-center gap-2 rounded-md bg-emerald-600/25 px-3 py-2 font-medium text-emerald-200"
+                          : "flex items-center gap-2 rounded-md px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-white"
+                      }
+                    >
+                      {Icon && <Icon className="h-4 w-4 shrink-0 opacity-80" />}
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
       <div className="border-t border-slate-800 p-3">
         <a
@@ -147,9 +130,36 @@ export function AdminSidebar() {
           rel="noreferrer"
           className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
         >
-          <ExternalLink className="h-4 w-4" /> View storefront
+          <ExternalLink className="h-4 w-4" /> Open website
         </a>
       </div>
     </aside>
+  );
+}
+
+export function AdminMobileNav() {
+  const pathname = usePathname();
+  const flat = SECTIONS.flatMap((s) => s.items);
+  return (
+    <div className="border-b border-slate-200 bg-white lg:hidden">
+      <div className="flex gap-1 overflow-x-auto px-2 py-2 text-xs">
+        {flat.map((item) => {
+          const on = active(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={
+                on
+                  ? "shrink-0 rounded-full bg-emerald-600 px-3 py-1.5 font-medium text-white"
+                  : "shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-slate-700"
+              }
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -2,9 +2,8 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { listProductCards } from "@/lib/product-store";
 import { query } from "@/lib/db";
-import { MOCK_ITEMS } from "@/lib/mock-data";
+import { listProductCards } from "@/lib/product-store";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Products · Admin" };
@@ -17,7 +16,6 @@ type Row = {
   extendedPrice: number;
   categoryName?: string;
   status?: string;
-  source: "db" | "mock";
 };
 
 export default async function AdminProductsPage() {
@@ -39,7 +37,7 @@ export default async function AdminProductsPage() {
       FROM "Item" i
       LEFT JOIN "Category" c ON c.id = i."categoryId"
       ORDER BY i."updatedAt" DESC
-      LIMIT 200
+      LIMIT 300
     `);
     for (const r of dbRows) {
       seen.add(r.slug);
@@ -51,11 +49,10 @@ export default async function AdminProductsPage() {
         extendedPrice: Number(r.extendedPrice),
         categoryName: r.categoryName || "—",
         status: r.status || "APPROVED",
-        source: "db",
       });
     }
   } catch {
-    /* fall through */
+    /* ignore */
   }
 
   try {
@@ -70,24 +67,11 @@ export default async function AdminProductsPage() {
         regularPrice: Number(c.regularPrice),
         extendedPrice: Number(c.extendedPrice),
         categoryName: c.category?.name || "—",
-        status: "LIVE",
-        source: "mock",
+        status: "APPROVED",
       });
     }
   } catch {
-    for (const c of MOCK_ITEMS) {
-      if (seen.has(c.slug)) continue;
-      rows.push({
-        id: c.id,
-        slug: c.slug,
-        title: c.title,
-        regularPrice: Number(c.regularPrice),
-        extendedPrice: Number(c.extendedPrice),
-        categoryName: c.category.name,
-        status: "MOCK",
-        source: "mock",
-      });
-    }
+    /* ignore */
   }
 
   return (
@@ -96,14 +80,19 @@ export default async function AdminProductsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Products</h1>
           <p className="text-sm text-slate-500">
-            Live data from Supabase · Free &amp; paid · Edit opens the DB record
+            Manage items on your marketplace. Prices update after you save.
           </p>
         </div>
-        <Link href="/admin/products/new">
-          <Button>
-            <Plus className="h-4 w-4" /> Add product
-          </Button>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/categories">
+            <Button variant="outline">Categories</Button>
+          </Link>
+          <Link href="/admin/products/new">
+            <Button>
+              <Plus className="h-4 w-4" /> Add product
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -113,7 +102,6 @@ export default async function AdminProductsPage() {
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Price</th>
-              <th className="px-4 py-3">Source</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
@@ -147,19 +135,8 @@ export default async function AdminProductsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={
-                        item.source === "db"
-                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
-                          : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
-                      }
-                    >
-                      {item.source === "db" ? "Database" : "Catalog"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
-                      {item.status || "—"}
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      {item.status === "APPROVED" ? "Published" : item.status}
                     </span>
                   </td>
                   <td className="space-x-2 px-4 py-3">
@@ -181,10 +158,10 @@ export default async function AdminProductsPage() {
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                   No products yet.{" "}
                   <Link href="/admin/products/new" className="text-emerald-600 hover:underline">
-                    Add one
+                    Add a product
                   </Link>
                 </td>
               </tr>

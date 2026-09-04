@@ -1,8 +1,9 @@
 import { ItemGrid } from "@/components/items/item-grid";
-import { MOCK_ITEMS } from "@/lib/mock-data";
+import { listProductCards } from "@/lib/product-store";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Search" };
+export const dynamic = "force-dynamic";
 
 interface Props {
   searchParams: Promise<{ term?: string; sort?: string }>;
@@ -11,13 +12,14 @@ interface Props {
 export default async function SearchPage({ searchParams }: Props) {
   const params = await searchParams;
   const term = params.term?.toLowerCase() ?? "";
-  let items = MOCK_ITEMS;
+  let items = await listProductCards();
   if (term) {
     items = items.filter(
       (i) =>
         i.title.toLowerCase().includes(term) ||
         i.category.name.toLowerCase().includes(term) ||
-        i.author.username.toLowerCase().includes(term)
+        i.author.username.toLowerCase().includes(term) ||
+        i.slug.toLowerCase().includes(term)
     );
   }
   const sort = params.sort ?? "relevance";
@@ -31,22 +33,9 @@ export default async function SearchPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <h1 className="text-2xl font-bold text-slate-900">
-        {term ? `Results for "${params.term}"` : "All items"}
+        {term ? `Results for “${params.term}”` : "Search"}
       </h1>
-      <p className="mt-1 text-sm text-slate-500">{items.length} items found</p>
-      <div className="mb-4 mt-4 flex flex-wrap gap-2">
-        {["relevance", "bestselling", "price_asc", "price_desc", "rating"].map((s) => (
-          <a
-            key={s}
-            href={`/search?term=${encodeURIComponent(params.term ?? "")}&sort=${s}`}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              sort === s ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-            {s.replace("_", " ")}
-          </a>
-        ))}
-      </div>
+      <p className="mb-6 mt-1 text-sm text-slate-500">{items.length} items</p>
       <ItemGrid items={items} emptyMessage="No items match your search." />
     </div>
   );

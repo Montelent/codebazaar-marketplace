@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2 } from "lucide-react";
+import { CKEditorField } from "@/components/editor/ck-editor";
 
 type Row = { feature: string; regular: string; extended: string };
 
@@ -143,12 +144,8 @@ export function LicensesSettingsEditor() {
           <Input value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Intro text</label>
-          <textarea
-            className="min-h-[80px] w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={intro}
-            onChange={(e) => setIntro(e.target.value)}
-          />
+          <label className="mb-1 block text-sm font-medium text-slate-700">Intro text (CKEditor)</label>
+          <CKEditorField value={intro} onChange={setIntro} minHeight={120} />
         </div>
       </section>
 
@@ -166,12 +163,8 @@ export function LicensesSettingsEditor() {
             <Input value={regBlurb} onChange={(e) => setRegBlurb(e.target.value)} />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Full description</label>
-            <textarea
-              className="min-h-[120px] w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={regBody}
-              onChange={(e) => setRegBody(e.target.value)}
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Full description (CKEditor)</label>
+            <CKEditorField value={regBody} onChange={setRegBody} minHeight={180} />
           </div>
         </section>
 
@@ -188,12 +181,8 @@ export function LicensesSettingsEditor() {
             <Input value={extBlurb} onChange={(e) => setExtBlurb(e.target.value)} />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Full description</label>
-            <textarea
-              className="min-h-[120px] w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              value={extBody}
-              onChange={(e) => setExtBody(e.target.value)}
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Full description (CKEditor)</label>
+            <CKEditorField value={extBody} onChange={setExtBody} minHeight={180} />
           </div>
         </section>
       </div>
@@ -263,12 +252,7 @@ export function LicensesSettingsEditor() {
 
       <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Footer note</h2>
-        <textarea
-          className="min-h-[80px] w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          value={footerNote}
-          onChange={(e) => setFooterNote(e.target.value)}
-          placeholder="Optional legal / support note under the table"
-        />
+        <CKEditorField value={footerNote} onChange={setFooterNote} minHeight={100} />
       </section>
 
       <div className="flex justify-end">

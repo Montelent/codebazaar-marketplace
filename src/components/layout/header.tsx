@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { useCartStore } from "@/lib/cart-store";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { AnnouncementBar } from "@/components/layout/announcement-bar";
 
 type NavLink = { label: string; href: string };
 type Cat = { name: string; slug: string; subs?: string[] };
@@ -33,7 +34,7 @@ const DEFAULT_MAIN: NavLink[] = [
 ];
 
 const DEFAULT_UTILITY: NavLink[] = [
-  { label: "Help Center", href: "/help" },
+  { label: "Help Center", href: "/page/help" },
   { label: "Licenses", href: "/pricing/licenses" },
 ];
 
@@ -56,7 +57,10 @@ export function Header() {
       .then((r) => r.json())
       .then((data) => {
         const s = data.settings || {};
-        if (s["general.siteName"]) setSiteName(String(s["general.siteName"]));
+        if (s["general.siteName"]) {
+          const n = String(s["general.siteName"]).replace(/<[^>]+>/g, "").trim();
+          if (n) setSiteName(n);
+        }
         if (Array.isArray(s["nav.categories"]) && s["nav.categories"].length)
           setCategories(s["nav.categories"] as Cat[]);
         if (Array.isArray(s["nav.main"]) && s["nav.main"].length)
@@ -84,6 +88,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+      <AnnouncementBar />
       <div className="border-b border-slate-100 bg-slate-50">
         <div className="mx-auto flex h-9 max-w-7xl items-center justify-between gap-3 px-4 text-xs text-slate-600">
           <div className="flex items-center gap-4 overflow-x-auto">

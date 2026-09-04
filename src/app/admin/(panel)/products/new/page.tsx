@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,10 +8,17 @@ import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { CKEditorField } from "@/components/editor/ck-editor";
 
+type Cat = { name: string; slug: string };
+type AttrMap = Record<string, string[]>;
+
 export default function NewProductPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [categories, setCategories] = useState<Cat[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [attrPresets, setAttrPresets] = useState<AttrMap>({});
+
   const [form, setForm] = useState({
     title: "",
     slug: "",
@@ -22,104 +29,119 @@ export default function NewProductPage() {
     categorySlug: "javascript",
     thumbnailUrl: "",
     demoUrl: "",
-    status: "APPROVED",
-    requirements: "",
-    tags: "",
+    isFree: false,
   });
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [features, setFeatures] = useState<string[]>([""]);
-  const [licenseFeatures, setLicenseFeatures] = useState<string[]>([
-    "Quality checked by CodeBazaar",
-    "Future updates",
-    "6 months support from author",
-  ]);
-  const [changelogText, setChangelogText] = useState("");
-  const [attributes, setAttributes] = useState<{ label: string; value: string }[]>([
-    { label: "Last Update", value: "" },
-    { label: "High Resolution", value: "Yes" },
-    { label: "Compatible Browsers", value: "" },
-    { label: "Files Included", value: "" },
-    { label: "Software Framework", value: "" },
-    { label: "Software Version", value: "" },
-  ]);
+  const [attrSelected, setAttrSelected] = useState<Record<string, string[]>>({});
+  const [customAttrs, setCustomAttrs] = useState<{ label: string; value: string }[]>([]);
 
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/admin/categories").then((r) => r.json()).catch(() => ({ categories: [] })),
+      fetch("/api/admin/taxonomy").then((r) => r.json()).catch(() => ({ tags: [], attributes: {} })),
+    ]).then(([cats, tax]) => {
+      setCategories(cats.categories || []);
+      setAllTags(tax.tags || []);
+      setAttrPresets(tax.attributes || {});
+      if (cats.categories?.[0]?.slug) {
+        setForm((f) => ({ ...f, categorySlug: f.categorySlug || cats.categories[0].slug }));
+      }
+    });
+  }, []);
 
-  function updateList(
-    list: string[],
-    setList: (v: string[]) => void,
-    i: number,
-    v: string
-  ) {
-    const next = [...list];
-    next[i] = v;
-    setList(next);
+  const set = (k: string, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
+
+  function toggleTag(t: string) {
+    setSelectedTags((prev) =>
+      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+    );
+  }
+
+  function toggleAttr(label: string, value: string) {
+    setAttrSelected((prev) => {
+      const cur = prev[label] || [];
+      const next = cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value];
+      return { ...prev, [label]: next };
+    });
+  }
+
+  function buildAttributes() {
+    const out: { label: string; value: string }[] = [];
+    for (const [label, vals] of Object.entries(attrSelected)) {
+      if (vals.length) out.push({ label, value: vals.join(", ") });
+    }
+    for (const a of customAttrs) {
+      if (a.label.trim() && a.value.trim()) out.push(a);
+    }
+    return out;
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/admin/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const slug =
+        form.slug ||
+        form.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+      const body = {
+        id: slug,
         title: form.title,
-        slug: form.slug,
+        slug,
         description: form.description,
-        regularPrice: Number(form.regularPrice),
-        extendedPrice: Number(form.extendedPrice),
-        salePriceRegular: form.salePriceRegular
-          ? Number(form.salePriceRegular)
-          : null,
+        isFree: Boolean(form.isFree),
+        regularPrice: form.isFree ? 0 : Number(form.regularPrice),
+        extendedPrice: form.isFree ? 0 : Number(form.extendedPrice),
+        salePriceRegular: form.isFree
+          ? null
+          : form.salePriceRegular
+            ? Number(form.salePriceRegular)
+            : null,
         categorySlug: form.categorySlug,
         thumbnailUrl: form.thumbnailUrl || undefined,
         demoUrl: form.demoUrl || undefined,
-        status: form.status,
-        features: features.filter((f) => f.trim()),
-        licenseFeatures: licenseFeatures.filter((f) => f.trim()),
-        requirements: form.requirements
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
-        tags: form.tags
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-        attributes: attributes.filter((a) => a.label.trim() && a.value.trim()),
-        changelog: changelogText,
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(
-        data.hint || (typeof data.error === "string" ? data.error : "Failed")
-      );
-      return;
+        features: features.filter(Boolean),
+        tags: selectedTags,
+        attributes: buildAttributes(),
+      };
+      const res = await fetch("/api/admin/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || data.message || `Save failed (${res.status})`);
+        return;
+      }
+      const editId = data.item?.id || data.id || slug;
+      router.push(`/admin/products/${editId}/edit`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setLoading(false);
     }
-    router.push("/admin/products");
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <Link
-          href="/admin/products"
-          className="text-sm text-emerald-600 hover:underline"
-        >
+        <Link href="/admin/products" className="text-sm text-emerald-600 hover:underline">
           ← Products
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-slate-900">Add product</h1>
         <p className="text-sm text-slate-500">
-          CodeCanyon-style · features, attributes, changelog, rich description
+          Same options as editing — category, tags, browsers, framework, features.
         </p>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-6">
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Basics
-          </h2>
+        <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Basics</h2>
           <Field label="Title">
             <Input
               value={form.title}
@@ -139,254 +161,212 @@ export default function NewProductPage() {
             />
           </Field>
           <Field label="Slug">
-            <Input
-              value={form.slug}
-              onChange={(e) => set("slug", e.target.value)}
-              required
-            />
+            <Input value={form.slug} onChange={(e) => set("slug", e.target.value)} required />
           </Field>
-          <Field label="Description (CKEditor)">
+          <Field label="Description">
             <CKEditorField
               value={form.description}
-              onChange={(html) => set("description", html)}
-              minHeight={260}
-              placeholder="Full product description…"
+              onChange={(v) => set("description", v)}
+              minHeight={200}
             />
           </Field>
-          <div className="grid grid-cols-3 gap-4">
-            <Field label="Regular $">
-              <Input
-                type="number"
-                step="0.01"
-                value={form.regularPrice}
-                onChange={(e) => set("regularPrice", e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Extended $">
-              <Input
-                type="number"
-                step="0.01"
-                value={form.extendedPrice}
-                onChange={(e) => set("extendedPrice", e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Sale regular $">
-              <Input
-                type="number"
-                step="0.01"
-                value={form.salePriceRegular}
-                onChange={(e) => set("salePriceRegular", e.target.value)}
-              />
-            </Field>
-          </div>
-          <Field label="Category slug">
-            <Input
-              value={form.categorySlug}
-              onChange={(e) => set("categorySlug", e.target.value)}
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={form.isFree}
+              onChange={(e) => set("isFree", e.target.checked)}
+              className="accent-emerald-600"
             />
-          </Field>
+            Free product
+          </label>
+          {!form.isFree && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Regular price">
+                <Input type="number" min={0} step="0.01" value={form.regularPrice} onChange={(e) => set("regularPrice", e.target.value)} />
+              </Field>
+              <Field label="Extended price">
+                <Input type="number" min={0} step="0.01" value={form.extendedPrice} onChange={(e) => set("extendedPrice", e.target.value)} />
+              </Field>
+              <Field label="Sale price">
+                <Input type="number" min={0} step="0.01" value={form.salePriceRegular} onChange={(e) => set("salePriceRegular", e.target.value)} />
+              </Field>
+            </div>
+          )}
           <Field label="Thumbnail URL">
-            <Input
-              value={form.thumbnailUrl}
-              onChange={(e) => set("thumbnailUrl", e.target.value)}
-              placeholder="https://…"
-            />
+            <Input value={form.thumbnailUrl} onChange={(e) => set("thumbnailUrl", e.target.value)} />
           </Field>
-          <Field label="Live preview URL">
-            <Input
-              value={form.demoUrl}
-              onChange={(e) => set("demoUrl", e.target.value)}
-              placeholder="https://…"
-            />
-          </Field>
-          <Field label="Tags (comma-separated)">
-            <Input
-              value={form.tags}
-              onChange={(e) => set("tags", e.target.value)}
-              placeholder="react, dashboard"
-            />
+          <Field label="Demo URL">
+            <Input value={form.demoUrl} onChange={(e) => set("demoUrl", e.target.value)} />
           </Field>
         </section>
 
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Product features
+            <h2 className="text-sm font-semibold uppercase text-slate-500">Category</h2>
+            <Link href="/admin/categories" className="text-xs text-emerald-600 hover:underline">
+              Manage categories
+            </Link>
+          </div>
+          <select
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={form.categorySlug}
+            onChange={(e) => set("categorySlug", e.target.value)}
+          >
+            {categories.length === 0 && (
+              <option value={form.categorySlug}>{form.categorySlug}</option>
+            )}
+            {categories.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase text-slate-500">Tags</h2>
+            <Link href="/admin/tags" className="text-xs text-emerald-600 hover:underline">
+              Manage tags
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {allTags.map((t) => {
+              const on = selectedTags.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => toggleTag(t)}
+                  className={
+                    on
+                      ? "rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white"
+                      : "rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                  }
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase text-slate-500">
+              Attributes (browsers, framework, files…)
             </h2>
+            <Link href="/admin/attributes" className="text-xs text-emerald-600 hover:underline">
+              Manage attributes
+            </Link>
+          </div>
+          {Object.entries(attrPresets).map(([label, options]) => (
+            <div key={label}>
+              <p className="mb-2 text-sm font-medium text-slate-800">{label}</p>
+              <div className="flex flex-wrap gap-2">
+                {options.map((opt) => {
+                  const on = (attrSelected[label] || []).includes(opt);
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => toggleAttr(label, opt)}
+                      className={
+                        on
+                          ? "rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white"
+                          : "rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-emerald-300"
+                      }
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="mb-2 text-sm font-medium text-slate-800">Custom attributes</p>
+            {customAttrs.map((a, i) => (
+              <div key={i} className="mb-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+                <Input
+                  placeholder="Label"
+                  value={a.label}
+                  onChange={(e) => {
+                    const n = [...customAttrs];
+                    n[i] = { ...n[i], label: e.target.value };
+                    setCustomAttrs(n);
+                  }}
+                />
+                <Input
+                  placeholder="Value"
+                  value={a.value}
+                  onChange={(e) => {
+                    const n = [...customAttrs];
+                    n[i] = { ...n[i], value: e.target.value };
+                    setCustomAttrs(n);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="rounded border p-2"
+                  onClick={() => setCustomAttrs((list) => list.filter((_, j) => j !== i))}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
             <Button
               type="button"
               variant="outline"
-              onClick={() => setFeatures((f) => [...f, ""])}
+              size="sm"
+              onClick={() => setCustomAttrs((a) => [...a, { label: "", value: "" }])}
             >
-              <Plus className="h-4 w-4" /> Add feature
+              <Plus className="h-4 w-4" /> Add custom attribute
             </Button>
           </div>
-          <p className="text-xs text-slate-500">
-            Bullets under the description on the item page.
-          </p>
+        </section>
+
+        <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Features</h2>
           {features.map((f, i) => (
             <div key={i} className="flex gap-2">
               <Input
                 value={f}
-                onChange={(e) =>
-                  updateList(features, setFeatures, i, e.target.value)
-                }
-                placeholder={`Feature ${i + 1}`}
-              />
-              <button
-                type="button"
-                className="rounded-md border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
-                onClick={() =>
-                  setFeatures((list) => list.filter((_, j) => j !== i))
-                }
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </section>
-
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              License / purchase features
-            </h2>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setLicenseFeatures((f) => [...f, ""])}
-            >
-              <Plus className="h-4 w-4" /> Add
-            </Button>
-          </div>
-          <p className="text-xs text-slate-500">Checkmarks next to the price.</p>
-          {licenseFeatures.map((f, i) => (
-            <div key={i} className="flex gap-2">
-              <Input
-                value={f}
-                onChange={(e) =>
-                  updateList(licenseFeatures, setLicenseFeatures, i, e.target.value)
-                }
-              />
-              <button
-                type="button"
-                className="rounded-md border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
-                onClick={() =>
-                  setLicenseFeatures((list) => list.filter((_, j) => j !== i))
-                }
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </section>
-
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Requirements
-          </h2>
-          <CKEditorField
-            value={form.requirements}
-            onChange={(html) => set("requirements", html)}
-            minHeight={120}
-            placeholder="One requirement per line"
-          />
-        </section>
-
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            ChangeLogs
-          </h2>
-          <CKEditorField
-            value={changelogText}
-            onChange={setChangelogText}
-            minHeight={160}
-            placeholder="Version 1.2 — [UPDATED] …"
-          />
-        </section>
-
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Item attributes
-            </h2>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                setAttributes((a) => [...a, { label: "", value: "" }])
-              }
-            >
-              <Plus className="h-4 w-4" /> Add attribute
-            </Button>
-          </div>
-          {attributes.map((a, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <Input
-                placeholder="Label"
-                value={a.label}
                 onChange={(e) => {
-                  const next = [...attributes];
-                  next[i] = { ...next[i], label: e.target.value };
-                  setAttributes(next);
-                }}
-              />
-              <Input
-                placeholder="Value"
-                value={a.value}
-                onChange={(e) => {
-                  const next = [...attributes];
-                  next[i] = { ...next[i], value: e.target.value };
-                  setAttributes(next);
+                  const n = [...features];
+                  n[i] = e.target.value;
+                  setFeatures(n);
                 }}
               />
               <button
                 type="button"
-                className="rounded-md border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
-                onClick={() =>
-                  setAttributes((list) => list.filter((_, j) => j !== i))
-                }
+                className="rounded border p-2"
+                onClick={() => setFeatures((list) => list.filter((_, j) => j !== i))}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
           ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setFeatures((f) => [...f, ""])}>
+            <Plus className="h-4 w-4" /> Add feature
+          </Button>
         </section>
 
         {error && (
-          <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {error}
-          </p>
+          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
         )}
-        <div className="flex gap-3">
-          <Button type="submit" disabled={loading}>
-            {loading ? "Saving…" : "Publish product"}
-          </Button>
-          <Link href="/admin/products">
-            <Button type="button" variant="outline">
-              Cancel
-            </Button>
-          </Link>
-        </div>
+        <Button type="submit" disabled={loading}>
+          {loading ? "Saving…" : "Create product"}
+        </Button>
       </form>
     </div>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-slate-700">
-        {label}
-      </label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
       {children}
     </div>
   );

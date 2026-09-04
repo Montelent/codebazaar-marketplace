@@ -128,7 +128,7 @@ export default async function HomePage() {
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
-                  name="q"
+                  name="term"
                   type="search"
                   placeholder={placeholder}
                   className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-slate-900 outline-none placeholder:text-slate-400"

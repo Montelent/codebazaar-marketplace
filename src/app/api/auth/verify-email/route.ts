@@ -5,14 +5,15 @@ import { appBaseUrl } from "@/lib/email";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const token = url.searchParams.get("token") || "";
+  const base = appBaseUrl();
   if (!token) {
-    return NextResponse.redirect(`${appBaseUrl()}/sign-in?error=missing_token`);
+    return NextResponse.redirect(`${base}/sign-in?verify=missing`);
   }
   const result = await verifyEmailToken(token);
   if (!result.ok) {
     return NextResponse.redirect(
-      `${appBaseUrl()}/sign-in?error=${encodeURIComponent(result.error)}`
+      `${base}/sign-in?verify=failed&reason=${encodeURIComponent(result.error || "invalid")}`
     );
   }
-  return NextResponse.redirect(`${appBaseUrl()}/sign-in?verified=1`);
+  return NextResponse.redirect(`${base}/sign-in?verify=ok`);
 }

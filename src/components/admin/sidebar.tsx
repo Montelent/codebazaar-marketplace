@@ -74,6 +74,7 @@ const SECTIONS: { title: string; items: LinkItem[] }[] = [
       { href: "/admin/settings/seo", label: "SEO", icon: Search },
       { href: "/admin/settings/schema", label: "Schema", icon: ListChecks },
       { href: "/admin/settings/payments", label: "Payments", icon: CreditCard },
+      { href: "/admin/settings/licenses", label: "Licenses", icon: FileText },
     ],
   },
 ];

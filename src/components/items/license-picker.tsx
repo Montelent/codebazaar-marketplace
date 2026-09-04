@@ -54,8 +54,14 @@ export function LicensePicker({
 
   const current = OPTIONS.find((o) => o.id === license)!;
   const priceFor = (id: "REGULAR" | "EXTENDED") => {
-    if (id === "REGULAR") return saleRegular ?? regularPrice;
-    return saleExtended ?? extendedPrice;
+    if (id === "REGULAR") {
+      return saleRegular != null && Number(saleRegular) > 0
+        ? Number(saleRegular)
+        : Number(regularPrice);
+    }
+    return saleExtended != null && Number(saleExtended) > 0
+      ? Number(saleExtended)
+      : Number(extendedPrice);
   };
 
   return (

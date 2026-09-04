@@ -23,21 +23,21 @@ export async function Footer() {
           title: "Marketplace",
           links: [
             { label: "License Types", href: "/pricing/licenses" },
-            { label: "Terms of Use", href: "/terms" },
+            { label: "Terms of Use", href: "/page/terms" },
           ],
         },
         {
           title: "Help",
           links: [
-            { label: "Help Center", href: "/help" },
-            { label: "Contact Support", href: "/contact" },
+            { label: "Help Center", href: "/page/help" },
+            { label: "Contact Support", href: "/page/contact" },
           ],
         },
         {
           title: "Company",
           links: [
-            { label: "About", href: "/about" },
-            { label: "Privacy Policy", href: "/privacy" },
+            { label: "About", href: "/page/about" },
+            { label: "Privacy Policy", href: "/page/privacy" },
           ],
         },
       ]) as FooterCol[];

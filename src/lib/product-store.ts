@@ -34,22 +34,30 @@ export type ProductOverride = {
 
 const OVERRIDES_KEY = "products.overrides";
 
+function coerceOverrides(raw: unknown): Record<string, ProductOverride> {
+  let v: unknown = raw;
+  for (let i = 0; i < 4; i++) {
+    if (typeof v === "string") {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        return {};
+      }
+    } else break;
+  }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return v as Record<string, ProductOverride>;
+  }
+  return {};
+}
+
 export async function getOverrides(): Promise<Record<string, ProductOverride>> {
   try {
     const row = await queryOne<{ value: unknown }>(
       `SELECT value FROM "SiteSetting" WHERE key = $1 LIMIT 1`,
       [OVERRIDES_KEY]
     );
-    if (row?.value && typeof row.value === "object") {
-      return row.value as Record<string, ProductOverride>;
-    }
-    if (typeof row?.value === "string") {
-      try {
-        return JSON.parse(row.value);
-      } catch {
-        return {};
-      }
-    }
+    if (row?.value != null) return coerceOverrides(row.value);
   } catch {
     /* ignore */
   }
@@ -220,12 +228,23 @@ export async function getProductDetail(
     /* fall through */
   }
 
-  const o =
+  let o =
     overrides[id] ||
     overrides[card.id] ||
     overrides[card.slug] ||
     (slug ? overrides[slug] : undefined) ||
     overrides[detail.slug];
+  if (!o) {
+    const wantSlug = slug || detail.slug || card.slug;
+    o = Object.values(overrides).find(
+      (x) =>
+        x &&
+        (x.slug === wantSlug ||
+          x.id === id ||
+          x.id === card.id ||
+          String(x.id) === String(id))
+    );
+  }
   return applyOverride(detail, o);
 }
 
@@ -233,7 +252,13 @@ export async function listProductCards(): Promise<ItemCardData[]> {
   const overrides = await getOverrides();
   const dbBySlug: Record<
     string,
-    { regularPrice: number; title: string; thumbnailUrl: string; id: string }
+    {
+      regularPrice: number;
+      extendedPrice: number;
+      title: string;
+      thumbnailUrl: string;
+      id: string;
+    }
   > = {};
 
   try {
@@ -242,13 +267,17 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       slug: string;
       title: string;
       regularPrice: number | string;
+      extendedPrice: number | string;
       thumbnailUrl: string | null;
-    }>(`SELECT id, slug, title, "regularPrice", "thumbnailUrl" FROM "Item" LIMIT 300`);
+    }>(
+      `SELECT id, slug, title, "regularPrice", "extendedPrice", "thumbnailUrl" FROM "Item" LIMIT 300`
+    );
     for (const r of rows) {
       dbBySlug[r.slug] = {
         id: r.id,
         title: r.title,
         regularPrice: Number(r.regularPrice),
+        extendedPrice: Number(r.extendedPrice),
         thumbnailUrl: r.thumbnailUrl || "",
       };
     }
@@ -260,18 +289,25 @@ export async function listProductCards(): Promise<ItemCardData[]> {
     const o = overrides[item.id] || overrides[item.slug];
     const db = dbBySlug[item.slug];
     let regularPrice = Number(item.regularPrice);
+    let extendedPrice = Number(item.extendedPrice);
     let title = item.title;
     let thumbnailUrl = item.thumbnailUrl;
     let id = item.id;
     if (db) {
       regularPrice = db.regularPrice;
+      extendedPrice = db.extendedPrice;
       title = db.title;
       if (db.thumbnailUrl) thumbnailUrl = db.thumbnailUrl;
       id = db.id;
     }
     if (o) {
-      if (o.isFree || Number(o.regularPrice) === 0) regularPrice = 0;
-      else if (o.regularPrice != null) regularPrice = Number(o.regularPrice);
+      if (o.isFree || Number(o.regularPrice) === 0) {
+        regularPrice = 0;
+        extendedPrice = 0;
+      } else {
+        if (o.regularPrice != null) regularPrice = Number(o.regularPrice);
+        if (o.extendedPrice != null) extendedPrice = Number(o.extendedPrice);
+      }
       if (o.title) title = o.title;
       if (o.thumbnailUrl) thumbnailUrl = o.thumbnailUrl;
     }
@@ -281,14 +317,7 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       title,
       thumbnailUrl,
       regularPrice,
-      extendedPrice:
-        o?.isFree || regularPrice === 0
-          ? 0
-          : o?.extendedPrice != null
-            ? Number(o.extendedPrice)
-            : o?.regularPrice != null
-              ? Number(o.regularPrice)
-              : Number(item.extendedPrice),
+      extendedPrice,
       salePriceRegular:
         o?.isFree || regularPrice === 0
           ? undefined

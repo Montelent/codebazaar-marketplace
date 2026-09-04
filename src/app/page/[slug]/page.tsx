@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { queryOne } from "@/lib/db";
+import { queryOne, query } from "@/lib/db";
 import type { Metadata } from "next";
+import { stripHtml } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -8,16 +9,28 @@ type Props = { params: Promise<{ slug: string }> };
 
 async function getPage(slug: string) {
   try {
-    const row = await queryOne<{
+    let row = await queryOne<{
       title: string;
       slug: string;
       content: string;
       status: string;
     }>(
-      `SELECT title, slug, content, status FROM "CmsPage" WHERE slug = $1 LIMIT 1`,
+      `SELECT title, slug, content, status::text AS status FROM "CmsPage" WHERE slug = $1 LIMIT 1`,
       [slug]
     );
-    return row;
+    if (row) return row;
+    const { rows } = await query<{
+      title: string;
+      slug: string;
+      content: string;
+      status: string;
+    }>(
+      `SELECT title, slug, content, status::text AS status FROM "CmsPage"
+       WHERE slug ILIKE $1 OR slug ILIKE $2
+       ORDER BY "updatedAt" DESC LIMIT 1`,
+      [slug, `%${slug}%`]
+    );
+    return rows[0] || null;
   } catch {
     return null;
   }
@@ -26,51 +39,32 @@ async function getPage(slug: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const page = await getPage(slug);
-  if (!page) return { title: "Page" };
-  return { title: page.title };
+  if (page) return { title: page.title };
+  return { title: slug };
 }
 
 export default async function CmsPublicPage({ params }: Props) {
   const { slug } = await params;
   const page = await getPage(slug);
 
-  const fallbacks: Record<string, { title: string; html: string }> = {
-    terms: {
-      title: "Terms of Use",
-      html: "<p>These Terms of Use govern your use of this marketplace. By purchasing or downloading items you agree to the license terms selected at checkout.</p>",
-    },
-    privacy: {
-      title: "Privacy Policy",
-      html: "<p>We collect account and order information needed to deliver digital products. Contact us to request data deletion.</p>",
-    },
-    about: {
-      title: "About",
-      html: "<p>We are a digital marketplace for high-quality code, scripts, and plugins.</p>",
-    },
-    help: {
-      title: "Help Center",
-      html: "<p>Need help with a purchase or download? Contact support from your account dashboard or email the site administrator.</p>",
-    },
-    contact: {
-      title: "Contact",
-      html: "<p>Reach us via the email address listed in site settings, or open a support ticket from your account.</p>",
-    },
-  };
+  if (page && page.content != null) {
+    const status = String(page.status || "").toUpperCase();
+    const html = page.content.trim()
+      ? page.content
+      : `<p>${stripHtml(page.title)}</p>`;
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-12">
+        <h1 className="text-3xl font-bold text-slate-900">{page.title}</h1>
+        {status === "DRAFT" && (
+          <p className="mt-2 text-xs text-amber-600">Draft — visible for preview</p>
+        )}
+        <article
+          className="prose prose-slate mt-6 max-w-none"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
+    );
+  }
 
-  const data =
-    page && (page.status === "PUBLISHED" || page.status === "DRAFT")
-      ? { title: page.title, html: page.content || "" }
-      : fallbacks[slug];
-
-  if (!data) notFound();
-
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
-      <h1 className="text-3xl font-bold text-slate-900">{data.title}</h1>
-      <article
-        className="prose prose-slate mt-6 max-w-none"
-        dangerouslySetInnerHTML={{ __html: data.html }}
-      />
-    </div>
-  );
+  notFound();
 }

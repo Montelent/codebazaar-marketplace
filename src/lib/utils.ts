@@ -12,7 +12,7 @@ export function formatPrice(price: number | string): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(num);
 }
 
@@ -48,4 +48,18 @@ export function getEffectivePrice(
   }
   if (sReg != null) return { price: sReg, original: reg };
   return { price: reg };
+}
+
+/** Remove HTML tags (e.g. empty CKEditor <p></p>) for plain-text UI fields */
+export function stripHtml(html: string): string {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
 }

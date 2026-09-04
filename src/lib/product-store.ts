@@ -313,11 +313,24 @@ export async function listProductCards(): Promise<ItemCardData[]> {
           r.salePriceRegular != null ? Number(r.salePriceRegular) : null,
         salesCount: Number(r.salesCount ?? base.salesCount ?? 0),
       };
+      // DB prices always win over mock seed data
+      for (const key of [...byKey.keys()]) {
+        const existing = byKey.get(key);
+        if (
+          existing &&
+          (existing.id === r.id ||
+            existing.slug === r.slug ||
+            existing.id === r.slug ||
+            existing.slug === r.id)
+        ) {
+          byKey.delete(key);
+        }
+      }
       byKey.set(r.id, card);
       byKey.set(r.slug, card);
     }
   } catch {
-    /* keep mocks */
+    /* keep mocks as fallback only */
   }
 
   const seen = new Set<string>();

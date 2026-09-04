@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Package, Github, Twitter, Linkedin } from "lucide-react";
-import { formatCompact } from "@/lib/utils";
+import { formatCompact, stripHtml } from "@/lib/utils";
 import { getAllSettings } from "@/lib/settings";
 
 type FooterLink = { label: string; href: string };
@@ -8,12 +8,16 @@ type FooterCol = { title: string; links: FooterLink[] };
 
 export async function Footer() {
   const s = await getAllSettings();
-  const siteName = String(s["general.siteName"] ?? "CodeBazaar");
-  const about = String(
-    s["footer.aboutText"] ??
-      "The marketplace for high-quality code, scripts, plugins, and digital assets."
+  const siteName = stripHtml(String(s["general.siteName"] ?? "CodeBazaar"));
+  const about = stripHtml(
+    String(
+      s["footer.aboutText"] ??
+        "The marketplace for high-quality code, scripts, plugins, and digital assets."
+    )
   );
-  const copyright = String(s["footer.copyright"] ?? `© ${siteName}. All prices in USD.`);
+  const copyright = stripHtml(
+    String(s["footer.copyright"] ?? `© ${siteName}. All prices in USD.`)
+  );
   const totalSold = Number(s["homepage.statsSold"] ?? 128450);
   const earnings = Number(s["homepage.statsEarnings"] ?? 4250000);
   const columns = (Array.isArray(s["footer.columns"])

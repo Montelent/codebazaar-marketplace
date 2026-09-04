@@ -2,6 +2,12 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { getSetting, setSettings } from "@/lib/settings";
+import {
+  DEFAULT_ATTRS_BY_CATEGORY,
+  mergeCategoryAttrs,
+  type AttrMap,
+  type AttrsByCategory,
+} from "@/lib/category-attributes";
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -12,56 +18,6 @@ async function requireAdmin() {
 const DEFAULT_TAGS = [
   "react", "nextjs", "wordpress", "php", "laravel", "typescript", "admin", "dashboard", "ecommerce",
 ];
-
-const DEFAULT_ATTRS: Record<string, string[]> = {
-  "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge", "Opera"],
-  "High Resolution": ["Yes", "No"],
-};
-
-const DEFAULT_ATTRS_BY_CATEGORY: Record<string, Record<string, string[]>> = {
-  wordpress: {
-    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge", "Opera"],
-    "Software Version": ["WordPress 6.x", "WordPress 5.x"],
-    "Files Included": ["CSS", "JS", "PHP", "HTML"],
-    "High Resolution": ["Yes", "No"],
-  },
-  "php-scripts": {
-    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge"],
-    "Software Framework": ["Laravel", "CodeIgniter", "Core PHP", "Symfony"],
-    "Software Version": ["PHP 8.x", "PHP 7.x"],
-    "Files Included": ["PHP", "JavaScript JS", "CSS", "SQL"],
-  },
-  javascript: {
-    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge", "Opera"],
-    "Software Framework": ["React", "Vue", "Angular", "Next.js", "Node.js"],
-    "Software Version": ["React 18.x", "Node 20.x"],
-    "Files Included": ["JavaScript JS", "TypeScript", "CSS", "SCSS", "JSON"],
-  },
-  html5: {
-    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge", "Opera"],
-    "Files Included": ["HTML", "CSS", "JS", "PSD"],
-    "High Resolution": ["Yes", "No"],
-  },
-  mobile: {
-    "Software Framework": ["Flutter", "React Native", "Swift", "Kotlin"],
-    "Software Version": ["Flutter 3.x", "React Native 0.7x"],
-    "Files Included": ["Dart", "JavaScript JS", "TypeScript"],
-  },
-  plugins: {
-    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge"],
-    "Software Framework": ["WordPress", "Figma", "VS Code"],
-    "Files Included": ["JS", "CSS", "PHP"],
-  },
-  "ai-tools": {
-    "Software Framework": ["Next.js", "Python", "Node.js"],
-    "Files Included": ["TypeScript", "Python", "JSON"],
-  },
-  ecommerce: {
-    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge"],
-    "Software Framework": ["WooCommerce", "Laravel", "Shopify", "Next.js"],
-    "Files Included": ["PHP", "JS", "CSS", "SQL"],
-  },
-};
 
 const DEFAULT_BLOG_CATEGORIES = [
   { name: "News", slug: "news" },
@@ -77,32 +33,30 @@ export async function GET(req: Request) {
   const categorySlug = url.searchParams.get("category") || "";
 
   const tags = (await getSetting("taxonomy.tags")) as string[] | undefined;
-  const attrs = (await getSetting("taxonomy.attributes")) as Record<string, string[]> | undefined;
   const byCat = (await getSetting("taxonomy.attributesByCategory")) as
-    | Record<string, Record<string, string[]>>
+    | AttrsByCategory
     | undefined;
   const blogCats = (await getSetting("blog.categories")) as
     | { name: string; slug: string }[]
     | undefined;
 
-  const catMap = {
+  const catMap: AttrsByCategory = {
     ...DEFAULT_ATTRS_BY_CATEGORY,
     ...(byCat && typeof byCat === "object" ? byCat : {}),
   };
 
-  let attributes: Record<string, string[]> =
-    attrs && typeof attrs === "object" && Object.keys(attrs).length
-      ? attrs
-      : DEFAULT_ATTRS;
-
-  if (categorySlug && catMap[categorySlug]) {
-    attributes = { ...DEFAULT_ATTRS, ...catMap[categorySlug] };
+  let attributes: AttrMap = {
+    "Compatible Browsers": ["Chrome", "Firefox", "Safari", "Edge"],
+  };
+  if (categorySlug) {
+    attributes = mergeCategoryAttrs(byCat, categorySlug);
   }
 
   return NextResponse.json({
     tags: Array.isArray(tags) && tags.length ? tags : DEFAULT_TAGS,
     attributes,
     attributesByCategory: catMap,
+    defaultAttributesByCategory: DEFAULT_ATTRS_BY_CATEGORY,
     blogCategories:
       Array.isArray(blogCats) && blogCats.length ? blogCats : DEFAULT_BLOG_CATEGORIES,
   });
@@ -119,6 +73,20 @@ export async function PUT(req: Request) {
     if (body.attributesByCategory)
       payload["taxonomy.attributesByCategory"] = body.attributesByCategory;
     if (body.blogCategories) payload["blog.categories"] = body.blogCategories;
+
+    // Partial update: one category's attribute map
+    if (body.categorySlug && body.categoryAttributes) {
+      const existing =
+        ((await getSetting("taxonomy.attributesByCategory")) as AttrsByCategory) ||
+        {};
+      const next = {
+        ...DEFAULT_ATTRS_BY_CATEGORY,
+        ...existing,
+        [body.categorySlug]: body.categoryAttributes as AttrMap,
+      };
+      payload["taxonomy.attributesByCategory"] = next;
+    }
+
     await setSettings(payload);
     return NextResponse.json({ ok: true, permanent: true });
   } catch (e) {

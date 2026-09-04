@@ -2,8 +2,8 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { listProductCards, getOverrides } from "@/lib/product-store";
 import { query } from "@/lib/db";
-import { listProductCards } from "@/lib/product-store";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Products · Admin" };
@@ -16,11 +16,35 @@ type Row = {
   extendedPrice: number;
   categoryName?: string;
   status?: string;
+  isFree?: boolean;
 };
 
 export default async function AdminProductsPage() {
-  const rows: Row[] = [];
-  const seen = new Set<string>();
+  const overrides = await getOverrides().catch(() => ({} as Record<string, never>));
+  const bySlug = new Map<string, Row>();
+
+  try {
+    const cards = await listProductCards();
+    for (const c of cards) {
+      const o = overrides[c.id] || overrides[c.slug];
+      const regular = Number(c.regularPrice);
+      const isFree = regular <= 0 || o?.isFree === true;
+      bySlug.set(c.slug, {
+        id: c.id,
+        slug: c.slug,
+        title: (o && o.title) || c.title,
+        regularPrice: isFree ? 0 : regular,
+        extendedPrice: isFree
+          ? 0
+          : Number(o?.extendedPrice != null ? o.extendedPrice : c.extendedPrice),
+        categoryName: c.category?.name || "—",
+        status: "APPROVED",
+        isFree,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 
   try {
     const { rows: dbRows } = await query<{
@@ -40,39 +64,35 @@ export default async function AdminProductsPage() {
       LIMIT 300
     `);
     for (const r of dbRows) {
-      seen.add(r.slug);
-      rows.push({
+      const o = overrides[r.id] || overrides[r.slug];
+      let regular = Number(r.regularPrice);
+      let extended = Number(r.extendedPrice);
+      if (o) {
+        if (o.isFree || Number(o.regularPrice) === 0) {
+          regular = 0;
+          extended = 0;
+        } else {
+          if (o.regularPrice != null) regular = Number(o.regularPrice);
+          if (o.extendedPrice != null) extended = Number(o.extendedPrice);
+        }
+      }
+      const isFree = regular <= 0;
+      bySlug.set(r.slug, {
         id: r.id,
         slug: r.slug,
-        title: r.title,
-        regularPrice: Number(r.regularPrice),
-        extendedPrice: Number(r.extendedPrice),
+        title: (o && o.title) || r.title,
+        regularPrice: isFree ? 0 : regular,
+        extendedPrice: isFree ? 0 : extended,
         categoryName: r.categoryName || "—",
         status: r.status || "APPROVED",
+        isFree,
       });
     }
   } catch {
     /* ignore */
   }
 
-  try {
-    const cards = await listProductCards();
-    for (const c of cards) {
-      if (seen.has(c.slug)) continue;
-      seen.add(c.slug);
-      rows.push({
-        id: c.id,
-        slug: c.slug,
-        title: c.title,
-        regularPrice: Number(c.regularPrice),
-        extendedPrice: Number(c.extendedPrice),
-        categoryName: c.category?.name || "—",
-        status: "APPROVED",
-      });
-    }
-  } catch {
-    /* ignore */
-  }
+  const rows = Array.from(bySlug.values());
 
   return (
     <div className="space-y-6">
@@ -80,7 +100,7 @@ export default async function AdminProductsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Products</h1>
           <p className="text-sm text-slate-500">
-            Manage items on your marketplace. Prices update after you save.
+            Live prices from your database and saved edits (including Free).
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -96,75 +116,57 @@ export default async function AdminProductsPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead className="border-b bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Category</th>
-              <th className="px-4 py-3">Price</th>
+              <th className="px-4 py-3">Regular</th>
+              <th className="px-4 py-3">Extended</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((item) => {
-              const free = Number(item.regularPrice) <= 0;
-              return (
-                <tr key={item.slug + item.id} className="hover:bg-slate-50/50">
-                  <td className="max-w-xs px-4 py-3">
-                    <Link
-                      href={`/item/${item.slug}/${item.id}`}
-                      className="line-clamp-1 font-medium hover:text-emerald-700"
-                    >
-                      {item.title}
-                    </Link>
-                    <div className="text-xs text-slate-400">{item.slug}</div>
+          <tbody className="divide-y">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  No products yet.
+                </td>
+              </tr>
+            ) : (
+              rows.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50/80">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{item.title}</div>
+                    <div className="text-xs text-slate-400">/{item.slug}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{item.categoryName}</td>
-                  <td className="px-4 py-3">
-                    {free ? (
-                      <span className="font-semibold text-emerald-700">Free</span>
-                    ) : (
-                      <>
-                        {formatPrice(Number(item.regularPrice))}
-                        <span className="text-xs text-slate-400">
-                          {" "}
-                          / {formatPrice(Number(item.extendedPrice))}
-                        </span>
-                      </>
-                    )}
+                  <td className="px-4 py-3 font-medium">
+                    {item.isFree || item.regularPrice <= 0
+                      ? "Free"
+                      : formatPrice(item.regularPrice)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {item.isFree || item.regularPrice <= 0
+                      ? "—"
+                      : formatPrice(item.extendedPrice)}
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                      {item.status === "APPROVED" ? "Published" : item.status}
+                      {item.status || "APPROVED"}
                     </span>
                   </td>
-                  <td className="space-x-2 px-4 py-3">
+                  <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin/products/${item.id}/edit`}
                       className="text-xs font-medium text-emerald-600 hover:underline"
                     >
                       Edit
                     </Link>
-                    <Link
-                      href={`/item/${item.slug}/${item.id}`}
-                      className="text-xs text-slate-500 hover:underline"
-                    >
-                      View
-                    </Link>
                   </td>
                 </tr>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                  No products yet.{" "}
-                  <Link href="/admin/products/new" className="text-emerald-600 hover:underline">
-                    Add a product
-                  </Link>
-                </td>
-              </tr>
+              ))
             )}
           </tbody>
         </table>

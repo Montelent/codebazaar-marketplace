@@ -260,16 +260,12 @@ export async function getProductDetail(
 
 export async function listProductCards(): Promise<ItemCardData[]> {
   const overrides = await getOverrides();
-  const dbBySlug: Record<
-    string,
-    {
-      regularPrice: number;
-      extendedPrice: number;
-      title: string;
-      thumbnailUrl: string;
-      id: string;
-    }
-  > = {};
+  const byKey = new Map<string, ItemCardData>();
+
+  for (const item of MOCK_ITEMS) {
+    byKey.set(item.id, { ...item });
+    byKey.set(item.slug, byKey.get(item.id)!);
+  }
 
   try {
     const { rows } = await query<{
@@ -279,61 +275,114 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       regularPrice: number | string;
       extendedPrice: number | string;
       thumbnailUrl: string | null;
+      salesCount?: number | string | null;
     }>(
-      `SELECT id, slug, title, "regularPrice", "extendedPrice", "thumbnailUrl" FROM "Item" LIMIT 300`
+      `SELECT id, slug, title, "regularPrice", "extendedPrice", "thumbnailUrl", "salesCount"
+       FROM "Item" LIMIT 500`
     );
     for (const r of rows) {
-      dbBySlug[r.slug] = {
+      const base =
+        byKey.get(r.id) ||
+        byKey.get(r.slug) ||
+        ({
+          id: r.id,
+          slug: r.slug,
+          title: r.title,
+          thumbnailUrl:
+            r.thumbnailUrl || "https://picsum.photos/seed/" + r.slug + "/640/400",
+          regularPrice: 0,
+          extendedPrice: 0,
+          ratingAvg: 0,
+          ratingCount: 0,
+          salesCount: 0,
+          author: { username: "codebazaar", avatarUrl: null },
+          category: { name: "Code", slug: "code" },
+        } as ItemCardData);
+
+      const card: ItemCardData = {
+        ...base,
         id: r.id,
+        slug: r.slug,
         title: r.title,
+        thumbnailUrl: r.thumbnailUrl || base.thumbnailUrl,
         regularPrice: Number(r.regularPrice),
         extendedPrice: Number(r.extendedPrice),
-        thumbnailUrl: r.thumbnailUrl || "",
+        salesCount: Number(r.salesCount ?? base.salesCount ?? 0),
       };
+      byKey.set(r.id, card);
+      byKey.set(r.slug, card);
     }
   } catch {
-    /* mock only */
+    /* keep mocks */
   }
 
-  return MOCK_ITEMS.map((item) => {
-    const o = overrides[item.id] || overrides[item.slug];
-    const db = dbBySlug[item.slug];
+  const seen = new Set<string>();
+  const out: ItemCardData[] = [];
+  for (const item of byKey.values()) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    const o =
+      overrides[item.id] ||
+      overrides[item.slug] ||
+      Object.values(overrides).find(
+        (x) => x && (x.id === item.id || x.slug === item.slug)
+      );
     let regularPrice = Number(item.regularPrice);
     let extendedPrice = Number(item.extendedPrice);
     let title = item.title;
     let thumbnailUrl = item.thumbnailUrl;
-    let id = item.id;
-    if (db) {
-      regularPrice = db.regularPrice;
-      extendedPrice = db.extendedPrice;
-      title = db.title;
-      if (db.thumbnailUrl) thumbnailUrl = db.thumbnailUrl;
-      id = db.id;
-    }
+    let salePriceRegular = item.salePriceRegular;
+
     if (o) {
-      if (o.isFree || Number(o.regularPrice) === 0) {
+      if (o.isFree === true || Number(o.regularPrice) === 0) {
         regularPrice = 0;
         extendedPrice = 0;
+        salePriceRegular = undefined;
       } else {
         if (o.regularPrice != null) regularPrice = Number(o.regularPrice);
         if (o.extendedPrice != null) extendedPrice = Number(o.extendedPrice);
+        if (o.salePriceRegular != null) salePriceRegular = Number(o.salePriceRegular);
       }
       if (o.title) title = o.title;
       if (o.thumbnailUrl) thumbnailUrl = o.thumbnailUrl;
     }
-    return {
+
+    out.push({
       ...item,
-      id,
       title,
       thumbnailUrl,
       regularPrice,
       extendedPrice,
+      salePriceRegular: regularPrice === 0 ? undefined : salePriceRegular,
+    });
+  }
+
+  for (const o of Object.values(overrides)) {
+    if (!o?.id && !o?.slug) continue;
+    const id = String(o.id || o.slug);
+    const slug = String(o.slug || o.id);
+    if (seen.has(id) || seen.has(slug)) continue;
+    seen.add(id);
+    const isFree = o.isFree === true || Number(o.regularPrice) === 0;
+    out.push({
+      id,
+      slug,
+      title: o.title || slug,
+      thumbnailUrl: o.thumbnailUrl || "https://picsum.photos/seed/" + slug + "/640/400",
+      regularPrice: isFree ? 0 : Number(o.regularPrice ?? 0),
+      extendedPrice: isFree ? 0 : Number(o.extendedPrice ?? 0),
       salePriceRegular:
-        o?.isFree || regularPrice === 0
-          ? undefined
-          : o?.salePriceRegular != null
-            ? Number(o.salePriceRegular)
-            : item.salePriceRegular,
-    };
-  });
+        isFree || o.salePriceRegular == null ? undefined : Number(o.salePriceRegular),
+      ratingAvg: 0,
+      ratingCount: 0,
+      salesCount: 0,
+      author: { username: "codebazaar", avatarUrl: null },
+      category: {
+        name: o.categorySlug || "Code",
+        slug: o.categorySlug || "code",
+      },
+    });
+  }
+
+  return out;
 }

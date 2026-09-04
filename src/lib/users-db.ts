@@ -82,19 +82,43 @@ export async function listUsers() {
        ORDER BY "createdAt" DESC NULLS LAST
        LIMIT 500`
     );
-    return rows;
+    return rows.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name || u.username || u.email,
+      username: u.username,
+      role: u.role || "BUYER",
+      emailVerified: u.emailVerified ? String(u.emailVerified) : null,
+      newsletter: u.newsletter !== false,
+      createdAt: u.createdAt ? String(u.createdAt) : null,
+    }));
   } catch {
-    const { rows } = await query<{
-      id: string;
-      email: string;
-      name: string | null;
-      username: string;
-      role: string;
-      createdAt: Date | string | null;
-    }>(
-      `SELECT id, email, name, username, role::text AS role, "createdAt"
-       FROM "User" ORDER BY "createdAt" DESC NULLS LAST LIMIT 500`
-    );
-    return rows.map((r) => ({ ...r, emailVerified: null, newsletter: true }));
+    try {
+      const { rows } = await query<{
+        id: string;
+        email: string;
+        name: string | null;
+        username: string;
+        role: string;
+        createdAt: Date | string | null;
+      }>(
+        `SELECT id, email, name, username, role::text AS role, "createdAt"
+         FROM "User"
+         ORDER BY "createdAt" DESC NULLS LAST
+         LIMIT 500`
+      );
+      return rows.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name || u.username || u.email,
+        username: u.username,
+        role: u.role || "BUYER",
+        emailVerified: null as string | null,
+        newsletter: true,
+        createdAt: u.createdAt ? String(u.createdAt) : null,
+      }));
+    } catch {
+      return [];
+    }
   }
 }

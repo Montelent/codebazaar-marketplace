@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { queryOne } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import {
   createEmailVerificationToken,
   ensureUserEmailColumns,
@@ -39,25 +39,64 @@ export async function POST(req: Request) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await queryOne<{ id: string; email: string; username: string }>(
-      `
-      INSERT INTO "User" (
-        "id", "email", "username", "name", "passwordHash", "role",
-        newsletter, "createdAt", "updatedAt"
-      )
-      VALUES (
-        gen_random_uuid()::text, $1, $2, $3, $4, 'BUYER',
-        true, NOW(), NOW()
-      )
-      RETURNING id, email, username
-      `,
-      [email, username, name || username, passwordHash]
-    );
+    let user: { id: string; email: string; username: string } | null = null;
+    let lastError = "";
+
+    try {
+      user = await queryOne(
+        `
+        INSERT INTO "User" (
+          "id", "email", "username", "name", "passwordHash", "role",
+          newsletter, "createdAt", "updatedAt"
+        )
+        VALUES (
+          gen_random_uuid()::text, $1, $2, $3, $4, 'BUYER',
+          true, NOW(), NOW()
+        )
+        RETURNING id, email, username
+        `,
+        [email, username, name || username, passwordHash]
+      );
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "insert failed";
+      try {
+        user = await queryOne(
+          `
+          INSERT INTO "User" (
+            "id", "email", "username", "name", "passwordHash", "role",
+            "createdAt", "updatedAt"
+          )
+          VALUES (
+            gen_random_uuid()::text, $1, $2, $3, $4, 'BUYER',
+            NOW(), NOW()
+          )
+          RETURNING id, email, username
+          `,
+          [email, username, name || username, passwordHash]
+        );
+      } catch (e2) {
+        lastError = e2 instanceof Error ? e2.message : lastError;
+      }
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Could not create user in database", detail: lastError },
+        { status: 500 }
+      );
+    }
+
+    try {
+      await query(`UPDATE "User" SET newsletter = true WHERE id = $1`, [user.id]);
+    } catch {
+      /* optional */
+    }
 
     let verificationSent = false;
+    let emailNote = "";
     try {
       const token = await createEmailVerificationToken(email);
-      const verifyUrl = `${appBaseUrl()}/api/auth/verify-email?token=${token}`;
+      const verifyUrl = `${appBaseUrl()}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
       const sent = await sendEmail({
         to: email,
         subject: "Verify your CodeBazaar email",
@@ -65,29 +104,31 @@ export async function POST(req: Request) {
           <p>Hi ${name || username},</p>
           <p>Thanks for signing up at CodeBazaar. Please verify your email:</p>
           <p><a href="${verifyUrl}">Verify email address</a></p>
-          <p>Or copy this link: ${verifyUrl}</p>
+          <p>Or copy this link:<br/>${verifyUrl}</p>
           <p>This link expires in 24 hours.</p>
         `,
         text: `Verify your email: ${verifyUrl}`,
       });
-      verificationSent = sent.ok;
+      verificationSent = sent.ok && !sent.error;
+      if (sent.error) emailNote = sent.error;
     } catch (err) {
+      emailNote = err instanceof Error ? err.message : "email error";
       console.error("verification email", err);
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        user,
-        verificationSent,
-        message: verificationSent
-          ? "Account created. Check your email to verify."
-          : "Account created. Verification email could not be sent (check RESEND_API_KEY).",
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({
+      ok: true,
+      user: { id: user.id, email: user.email, username: user.username },
+      verificationSent,
+      emailNote: emailNote || undefined,
+      message: verificationSent
+        ? "Account created. Check your email to verify."
+        : "Account created in database. Set RESEND_API_KEY on Vercel to send verification emails.",
+    });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "DB error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Registration failed" },
+      { status: 500 }
+    );
   }
 }

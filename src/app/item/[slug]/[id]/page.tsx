@@ -22,6 +22,12 @@ import { ItemCard } from "@/components/items/item-card";
 import { LicensePicker } from "@/components/items/license-picker";
 import { AttributeRow } from "@/components/items/attribute-row";
 
+function toPrice(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function ItemDetailPage({
   params,
 }: {
@@ -70,14 +76,8 @@ export default function ItemDetailPage({
           demoUrl: p.demoUrl ?? base.demoUrl,
           regularPrice: Number(p.regularPrice ?? 0),
           extendedPrice: Number(p.extendedPrice ?? 0),
-          salePriceRegular:
-            p.salePriceRegular != null && p.salePriceRegular !== ""
-              ? Number(p.salePriceRegular as number)
-              : null,
-          salePriceExtended:
-            p.salePriceExtended != null && p.salePriceExtended !== ""
-              ? Number(p.salePriceExtended as number)
-              : null,
+          salePriceRegular: toPrice(p.salePriceRegular),
+          salePriceExtended: toPrice(p.salePriceExtended),
           features: Array.isArray(p.features) ? p.features : base.features,
           requirements: Array.isArray(p.requirements) ? p.requirements : base.requirements,
           changelogs:

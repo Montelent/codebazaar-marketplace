@@ -8,6 +8,7 @@ import { CKEditorField } from "@/components/editor/ck-editor";
 type FieldType =
   | "text"
   | "textarea"
+  | "richtext"
   | "number"
   | "checkbox"
   | "url"
@@ -35,6 +36,15 @@ function normalizeHex(v: string): string {
   }
   if (!/^#[0-9a-fA-F]{6}$/.test(s)) return s;
   return s.toLowerCase();
+}
+
+function plainText(val: unknown): string {
+  return String(val ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .trim();
 }
 
 function ColorField({
@@ -89,7 +99,6 @@ function GradientField({
   value: string;
   onChange: (v: string) => void;
 }) {
-  // value format: "#0f172a|#059669|135" or full CSS
   let from = "#0f172a";
   let to = "#059669";
   let angle = "135";
@@ -100,7 +109,6 @@ function GradientField({
     to = b || to;
     angle = c || angle;
   } else if (raw.includes("gradient")) {
-    // keep full CSS; still show controls that rebuild
     const m = raw.match(/#[0-9a-fA-F]{3,8}/g);
     if (m?.[0]) from = m[0];
     if (m?.[1]) to = m[1];
@@ -133,12 +141,7 @@ function GradientField({
           />
         </div>
       </div>
-      <Input
-        className="font-mono text-xs"
-        value={css}
-        readOnly
-        title="Generated CSS"
-      />
+      <Input className="font-mono text-xs" value={css} readOnly title="Generated CSS" />
       {help && <p className="text-xs text-slate-500">{help}</p>}
     </div>
   );
@@ -202,6 +205,20 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
             return (
               <div key={f.key}>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
+                <textarea
+                  className="min-h-[100px] w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  value={plainText(val)}
+                  onChange={(e) => set(f.key, e.target.value)}
+                  placeholder={f.label}
+                />
+                {f.help && <p className="mt-1 text-xs text-slate-500">{f.help}</p>}
+              </div>
+            );
+          }
+          if (f.type === "richtext") {
+            return (
+              <div key={f.key}>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
                 <CKEditorField
                   value={String(val ?? "")}
                   onChange={(html) => set(f.key, html)}
@@ -239,7 +256,7 @@ export function SettingsForm({ title, description, initial, fields }: Props) {
               <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
               <Input
                 type={f.type === "number" ? "number" : f.type === "url" ? "url" : "text"}
-                value={String(val ?? "")}
+                value={plainText(val)}
                 onChange={(e) =>
                   set(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)
                 }

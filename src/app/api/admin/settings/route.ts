@@ -32,6 +32,8 @@ export async function PUT(req: Request) {
     revalidatePath("/");
     revalidatePath("/search");
     revalidatePath("/api/settings");
+    revalidatePath("/pricing/licenses");
+    revalidatePath("/licensing");
     return NextResponse.json({
       ok: true,
       permanent: true,

@@ -7,6 +7,7 @@ import { CATEGORY_CARDS } from "@/lib/mock-data";
 import { ItemCard } from "@/components/items/item-card";
 import { getAllSettings } from "@/lib/settings";
 import { listProductCards } from "@/lib/product-store";
+import { stripHtml } from "@/lib/utils";
 
 export default async function HomePage() {
   const s = await getAllSettings();
@@ -14,11 +15,17 @@ export default async function HomePage() {
   const featured = allItems.slice(0, 4);
   const bestsellers = [...allItems].sort((a, b) => b.salesCount - a.salesCount).slice(0, 4);
 
-  const heroTitle = String(s["homepage.heroTitle"] ?? "Code that powers your next product");
-  const heroHighlight = String(s["homepage.heroHighlight"] ?? "your next product");
-  const heroSubtitle = String(
-    s["homepage.heroSubtitle"] ??
-      "Discover premium scripts, themes, plugins, and templates from world-class independent creators."
+  const heroTitle = stripHtml(
+    String(s["homepage.heroTitle"] ?? "Code that powers your next product")
+  );
+  const heroHighlight = stripHtml(
+    String(s["homepage.heroHighlight"] ?? "your next product")
+  );
+  const heroSubtitle = stripHtml(
+    String(
+      s["homepage.heroSubtitle"] ??
+        "Discover premium scripts, themes, plugins, and templates from world-class independent creators."
+    )
   );
   const heroImage = String(s["homepage.heroImageUrl"] ?? "");
   const heroBg = String(s["homepage.heroBgColor"] ?? "#0f172a");
@@ -37,16 +44,22 @@ export default async function HomePage() {
   const buttonColor = String(s["homepage.buttonColor"] ?? "#059669");
   const buttonText = String(s["homepage.buttonTextColor"] ?? "#ffffff");
   const accent = String(s["homepage.accentColor"] ?? "#10b981");
-  const ctaText = String(s["homepage.heroCtaText"] ?? "Search");
-  const placeholder = String(
-    s["homepage.heroSearchPlaceholder"] ?? "Search scripts, themes, plugins…"
+  const ctaText = stripHtml(String(s["homepage.heroCtaText"] ?? "Search"));
+  const placeholder = stripHtml(
+    String(s["homepage.heroSearchPlaceholder"] ?? "Search scripts, themes, plugins…")
   );
-  const siteName = String(s["general.siteName"] ?? "CodeBazaar");
+  const siteName = stripHtml(String(s["general.siteName"] ?? "CodeBazaar"));
 
   const titleParts =
-    heroHighlight && heroTitle.includes(heroHighlight)
+    heroHighlight &&
+    heroTitle !== heroHighlight &&
+    heroTitle.includes(heroHighlight)
       ? heroTitle.split(heroHighlight)
       : [heroTitle, ""];
+  const showHighlight =
+    Boolean(heroHighlight) &&
+    (heroTitle === heroHighlight ||
+      (titleParts.length > 1 && heroTitle.includes(heroHighlight)));
 
   return (
     <div className="pb-16">
@@ -74,11 +87,17 @@ export default async function HomePage() {
               {siteName}
             </p>
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-              {titleParts[0]}
-              {heroHighlight && titleParts.length > 1 ? (
-                <span style={{ color: accent }}>{heroHighlight}</span>
-              ) : null}
-              {titleParts[1] || ""}
+              {heroTitle === heroHighlight ? (
+                <span style={{ color: accent }}>{heroTitle}</span>
+              ) : (
+                <>
+                  {titleParts[0]}
+                  {showHighlight && heroTitle !== heroHighlight ? (
+                    <span style={{ color: accent }}>{heroHighlight}</span>
+                  ) : null}
+                  {titleParts[1] || ""}
+                </>
+              )}
             </h1>
             <p className="mt-4 text-lg text-slate-200">{heroSubtitle}</p>
             <form

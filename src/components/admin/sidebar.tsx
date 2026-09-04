@@ -53,6 +53,7 @@ const SECTIONS: { title: string; items: LinkItem[] }[] = [
     title: "Content",
     items: [
       { href: "/admin/blog", label: "Blog", icon: Newspaper },
+      { href: "/admin/blog/categories", label: "Blog categories", icon: FolderTree },
       { href: "/admin/pages", label: "Pages", icon: FileText },
     ],
   },

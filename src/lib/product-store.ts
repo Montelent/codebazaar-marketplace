@@ -19,6 +19,8 @@ export type ProductOverride = {
   isFree?: boolean;
   thumbnailUrl?: string;
   demoUrl?: string;
+  mainFileUrl?: string;
+  galleryUrls?: string[];
   features?: string[];
   licenseFeatures?: string[];
   requirements?: string | string[];
@@ -89,7 +91,7 @@ export async function saveOverride(id: string, data: ProductOverride) {
 function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetail {
   if (!o) return detail;
   const isFree = o.isFree === true || Number(o.regularPrice) === 0;
-  const attrs = (o.attributes || detail.attributes).filter(
+  const attrs = (o.attributes || detail.attributes || []).filter(
     (a) => !["Last Update", "Created", "Published", "Updated"].includes(a.label)
   );
   const lastUpdate = o.updatedAt
@@ -112,125 +114,112 @@ function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetai
     title: o.title ?? detail.title,
     slug: o.slug ?? detail.slug,
     descriptionHtml: o.description ?? detail.descriptionHtml,
-    regularPrice: isFree ? 0 : Number(o.regularPrice ?? detail.regularPrice),
-    extendedPrice: isFree ? 0 : Number(o.extendedPrice ?? detail.extendedPrice),
-    salePriceRegular: isFree
-      ? null
-      : o.salePriceRegular !== undefined
-        ? o.salePriceRegular
-        : detail.salePriceRegular,
-    thumbnailUrl: o.thumbnailUrl || detail.thumbnailUrl,
+    regularPrice: isFree ? 0 : (o.regularPrice ?? detail.regularPrice),
+    extendedPrice: isFree ? 0 : (o.extendedPrice ?? detail.extendedPrice),
+    salePriceRegular: isFree ? null : (o.salePriceRegular ?? detail.salePriceRegular),
+    salePriceExtended: isFree ? null : (o.salePriceExtended ?? detail.salePriceExtended),
+    thumbnailUrl: o.thumbnailUrl ?? detail.thumbnailUrl,
     demoUrl: o.demoUrl ?? detail.demoUrl,
-    features: o.features ?? detail.features,
-    licenseFeatures: o.licenseFeatures ?? detail.licenseFeatures,
-    requirements: Array.isArray(o.requirements)
-      ? o.requirements
-      : typeof o.requirements === "string"
-        ? o.requirements
-            .replace(/<[^>]+>/g, "\n")
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : detail.requirements,
-    tags: o.tags ?? detail.tags,
-    attributes: attrs,
+    galleryUrls: o.galleryUrls?.length ? o.galleryUrls : detail.galleryUrls,
+    features: o.features?.length ? o.features : detail.features,
+    tags: o.tags?.length ? o.tags : detail.tags,
+    attributes: attrs.length ? attrs : detail.attributes,
     lastUpdate,
     createdAt,
   };
 }
 
-type DbItem = {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  features: unknown;
-  tags: unknown;
-  regularPrice: number | string;
-  extendedPrice: number | string;
-  salePriceRegular: number | string | null;
-  salePriceExtended: number | string | null;
-  thumbnailUrl: string;
-  demoUrl: string | null;
-  updatedAt: Date;
-  createdAt: Date;
-  category_name?: string;
-  category_slug?: string;
-  author_username?: string;
-  author_name?: string | null;
-};
-
-export async function getProductDetail(id: string, slug?: string): Promise<ProductDetail> {
+export async function getProductDetail(
+  id: string,
+  slug?: string
+): Promise<ProductDetail | null> {
   const overrides = await getOverrides();
   const card =
-    MOCK_ITEMS.find((i) => i.id === id || i.slug === slug) ?? MOCK_ITEMS[0];
-  let detail = PRODUCT_DETAILS[card.id] ?? detailFromCard(card);
+    MOCK_ITEMS.find((i) => i.id === id || i.slug === slug || i.slug === id) ??
+    MOCK_ITEMS[0];
+  let detail: ProductDetail =
+    PRODUCT_DETAILS[card.id] ?? detailFromCard(card);
 
   try {
-    const db = await queryOne<DbItem>(
+    const db = await queryOne<{
+      id: string;
+      slug: string;
+      title: string;
+      description: string | null;
+      regularPrice: number | string;
+      extendedPrice: number | string;
+      salePriceRegular: number | string | null;
+      thumbnailUrl: string | null;
+      demoUrl: string | null;
+      features: unknown;
+      tags: unknown;
+      category_slug: string | null;
+      category_name: string | null;
+      author_username: string | null;
+      author_name: string | null;
+      createdAt: Date | string;
+      updatedAt: Date | string;
+    }>(
       `
-      SELECT i.*, c.name AS category_name, c.slug AS category_slug,
+      SELECT i.*, c.slug AS category_slug, c.name AS category_name,
              u.username AS author_username, u.name AS author_name
       FROM "Item" i
       LEFT JOIN "Category" c ON c.id = i."categoryId"
       LEFT JOIN "User" u ON u.id = i."authorId"
-      WHERE i.id = $1 OR i.slug = $2 OR i.slug = $3
+      WHERE i.slug = $1 OR i.id = $2
       LIMIT 1
       `,
-      [id, card.slug, slug || card.slug]
+      [slug || id, id]
     );
     if (db) {
-      const feat = Array.isArray(db.features) ? (db.features as string[]) : [];
-      const tags = Array.isArray(db.tags) ? (db.tags as string[]) : [];
-      const price = Number(db.regularPrice);
+      const fmt = (d: Date | string) =>
+        new Date(d).toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
       detail = {
         ...detail,
         id: db.id,
         slug: db.slug,
         title: db.title,
-        descriptionHtml: db.description,
-        regularPrice: price,
+        descriptionHtml: db.description || detail.descriptionHtml,
+        regularPrice: Number(db.regularPrice),
         extendedPrice: Number(db.extendedPrice),
         salePriceRegular:
           db.salePriceRegular != null ? Number(db.salePriceRegular) : null,
-        salePriceExtended:
-          db.salePriceExtended != null ? Number(db.salePriceExtended) : null,
-        thumbnailUrl: db.thumbnailUrl,
-        demoUrl: db.demoUrl || undefined,
-        features: feat.length ? feat : detail.features,
-        tags: tags.length ? tags : detail.tags,
-        lastUpdate: new Date(db.updatedAt).toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        }),
-        createdAt: new Date(db.createdAt).toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        }),
+        thumbnailUrl: db.thumbnailUrl || detail.thumbnailUrl,
+        demoUrl: db.demoUrl || detail.demoUrl,
+        features: Array.isArray(db.features)
+          ? (db.features as string[])
+          : detail.features,
+        tags: Array.isArray(db.tags) ? (db.tags as string[]) : detail.tags,
         category: {
           name: db.category_name || detail.category.name,
           slug: db.category_slug || detail.category.slug,
-          parentName: "Code",
-          parentSlug: "code",
+          parentName: detail.category.parentName,
+          parentSlug: detail.category.parentSlug,
         },
         author: {
           username: db.author_username || detail.author.username,
-          displayName: db.author_name || db.author_username || detail.author.displayName,
+          displayName:
+            db.author_name || db.author_username || detail.author.displayName,
           isElite: true,
         },
+        lastUpdate: fmt(db.updatedAt),
+        createdAt: fmt(db.createdAt),
       };
     }
   } catch {
-    /* mock */
+    /* fall through */
   }
 
   const o =
     overrides[id] ||
     overrides[card.id] ||
     overrides[card.slug] ||
-    (slug ? overrides[slug] : undefined);
+    (slug ? overrides[slug] : undefined) ||
+    overrides[detail.slug];
   return applyOverride(detail, o);
 }
 
@@ -238,57 +227,64 @@ export async function listProductCards(): Promise<ItemCardData[]> {
   const overrides = await getOverrides();
   const dbBySlug: Record<
     string,
-    { regularPrice: number; title: string; thumbnailUrl: string }
+    { regularPrice: number; title: string; thumbnailUrl: string; id: string }
   > = {};
+
   try {
     const { rows } = await query<{
+      id: string;
       slug: string;
       title: string;
-      thumbnailUrl: string;
       regularPrice: number | string;
-    }>(`SELECT slug, title, "thumbnailUrl", "regularPrice" FROM "Item" LIMIT 200`);
+      thumbnailUrl: string | null;
+    }>(`SELECT id, slug, title, "regularPrice", "thumbnailUrl" FROM "Item" LIMIT 300`);
     for (const r of rows) {
       dbBySlug[r.slug] = {
-        regularPrice: Number(r.regularPrice),
+        id: r.id,
         title: r.title,
-        thumbnailUrl: r.thumbnailUrl,
+        regularPrice: Number(r.regularPrice),
+        thumbnailUrl: r.thumbnailUrl || "",
       };
     }
   } catch {
-    /* ignore */
+    /* mock only */
   }
 
   return MOCK_ITEMS.map((item) => {
-    const db = dbBySlug[item.slug];
     const o = overrides[item.id] || overrides[item.slug];
-    const isFree =
-      (o && (o.isFree === true || Number(o.regularPrice) === 0)) ||
-      (db && Number(db.regularPrice) === 0);
+    const db = dbBySlug[item.slug];
+    let regularPrice = Number(item.regularPrice);
+    let title = item.title;
+    let thumbnailUrl = item.thumbnailUrl;
+    let id = item.id;
+    if (db) {
+      regularPrice = db.regularPrice;
+      title = db.title;
+      if (db.thumbnailUrl) thumbnailUrl = db.thumbnailUrl;
+      id = db.id;
+    }
+    if (o) {
+      if (o.isFree || Number(o.regularPrice) === 0) regularPrice = 0;
+      else if (o.regularPrice != null) regularPrice = Number(o.regularPrice);
+      if (o.title) title = o.title;
+      if (o.thumbnailUrl) thumbnailUrl = o.thumbnailUrl;
+    }
     return {
       ...item,
-      title: o?.title || db?.title || item.title,
-      slug: o?.slug || item.slug,
-      thumbnailUrl: o?.thumbnailUrl || db?.thumbnailUrl || item.thumbnailUrl,
-      regularPrice: isFree
-        ? 0
-        : Number(o?.regularPrice ?? db?.regularPrice ?? item.regularPrice),
-      extendedPrice: isFree ? 0 : Number(o?.extendedPrice ?? item.extendedPrice),
-      salePriceRegular: isFree
-        ? null
-        : o?.salePriceRegular !== undefined
-          ? o.salePriceRegular
-          : item.salePriceRegular,
+      id,
+      title,
+      thumbnailUrl,
+      regularPrice,
+      extendedPrice:
+        o?.isFree || regularPrice === 0
+          ? 0
+          : Number(o?.extendedPrice ?? item.extendedPrice),
+      salePriceRegular:
+        o?.isFree || regularPrice === 0
+          ? undefined
+          : o?.salePriceRegular != null
+            ? Number(o.salePriceRegular)
+            : item.salePriceRegular,
     };
   });
-}
-
-export function isProductFree(detail: {
-  regularPrice: number;
-  salePriceRegular?: number | null;
-}): boolean {
-  const p =
-    detail.salePriceRegular != null
-      ? Number(detail.salePriceRegular)
-      : Number(detail.regularPrice);
-  return p <= 0;
 }

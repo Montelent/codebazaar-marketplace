@@ -144,11 +144,37 @@ export async function PUT(req: Request) {
     try {
       await saveOverride(String(body.id), overridePayload);
       await saveOverride(slug, { ...overridePayload, id: slug });
+
+      const mainFile = body.mainFileUrl ? String(body.mainFileUrl).trim() : "";
+      if (mainFile) {
+        try {
+          await query(`ALTER TABLE "Item" ADD COLUMN IF NOT EXISTS "mainFileUrl" TEXT`);
+          await query(
+            `UPDATE "Item" SET "mainFileUrl" = $1, "updatedAt" = NOW() WHERE slug = $2 OR id = $3`,
+            [mainFile, slug, String(body.id)]
+          );
+        } catch (err) {
+          console.error("mainFileUrl column:", err);
+        }
+        for (const key of [`product.mainFile.${body.id}`, `product.mainFile.${slug}`]) {
+          try {
+            await query(
+              `
+              INSERT INTO "SiteSetting" ("id", "key", "value", "group", "updatedAt")
+              VALUES (gen_random_uuid()::text, $1, to_jsonb($2::text), 'products', NOW())
+              ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = NOW()
+              `,
+              [key, mainFile]
+            );
+          } catch (err) {
+            console.error("mainFile setting:", err);
+          }
+        }
+      }
     } catch (e) {
       console.error("override save:", e);
     }
 
-    // Always push prices to Item by slug (even if INSERT path fails later)
     try {
       await query(
         `UPDATE "Item" SET "regularPrice" = $1, "extendedPrice" = $2, "salePriceRegular" = $3, "updatedAt" = NOW() WHERE "slug" = $4`,

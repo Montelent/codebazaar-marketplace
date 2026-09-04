@@ -115,7 +115,13 @@ function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetai
     slug: o.slug ?? detail.slug,
     descriptionHtml: o.description !== undefined ? o.description : detail.descriptionHtml,
     regularPrice: isFree ? 0 : (o.regularPrice ?? detail.regularPrice),
-    extendedPrice: isFree ? 0 : (o.extendedPrice ?? detail.extendedPrice),
+    extendedPrice: isFree
+      ? 0
+      : o.extendedPrice != null
+        ? Number(o.extendedPrice)
+        : o.regularPrice != null
+          ? Number(o.regularPrice)
+          : detail.extendedPrice,
     salePriceRegular: isFree ? null : (o.salePriceRegular ?? detail.salePriceRegular),
     salePriceExtended: isFree ? null : (o.salePriceExtended ?? detail.salePriceExtended),
     thumbnailUrl: o.thumbnailUrl ?? detail.thumbnailUrl,
@@ -278,7 +284,11 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       extendedPrice:
         o?.isFree || regularPrice === 0
           ? 0
-          : Number(o?.extendedPrice ?? item.extendedPrice),
+          : o?.extendedPrice != null
+            ? Number(o.extendedPrice)
+            : o?.regularPrice != null
+              ? Number(o.regularPrice)
+              : Number(item.extendedPrice),
       salePriceRegular:
         o?.isFree || regularPrice === 0
           ? undefined

@@ -13,19 +13,6 @@ type Props = {
   saleExtended?: number | null;
 };
 
-const OPTIONS = [
-  {
-    id: "REGULAR" as const,
-    label: "Regular License",
-    blurb: "For a single end product (free or paid end users).",
-  },
-  {
-    id: "EXTENDED" as const,
-    label: "Extended License",
-    blurb: "For one end product sold to end users (SaaS, paid app).",
-  },
-];
-
 export function LicensePicker({
   license,
   onChange,
@@ -36,6 +23,27 @@ export function LicensePicker({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [regLabel, setRegLabel] = useState("Regular License");
+  const [extLabel, setExtLabel] = useState("Extended License");
+  const [regBlurb, setRegBlurb] = useState(
+    "For a single end product (free or paid end users)."
+  );
+  const [extBlurb, setExtBlurb] = useState(
+    "For one end product sold to end users (SaaS, paid app)."
+  );
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        const s = data.settings || {};
+        if (s["licenses.regular.title"]) setRegLabel(String(s["licenses.regular.title"]));
+        if (s["licenses.extended.title"]) setExtLabel(String(s["licenses.extended.title"]));
+        if (s["licenses.regular.blurb"]) setRegBlurb(String(s["licenses.regular.blurb"]));
+        if (s["licenses.extended.blurb"]) setExtBlurb(String(s["licenses.extended.blurb"]));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -52,7 +60,12 @@ export function LicensePicker({
     };
   }, []);
 
-  const current = OPTIONS.find((o) => o.id === license)!;
+  const options = [
+    { id: "REGULAR" as const, label: regLabel, blurb: regBlurb },
+    { id: "EXTENDED" as const, label: extLabel, blurb: extBlurb },
+  ];
+  const current = options.find((o) => o.id === license)!;
+
   const priceFor = (id: "REGULAR" | "EXTENDED") => {
     if (id === "REGULAR") {
       return saleRegular != null && Number(saleRegular) > 0
@@ -78,8 +91,11 @@ export function LicensePicker({
       </button>
 
       {open && (
-        <ul role="listbox" className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
-          {OPTIONS.map((opt) => {
+        <ul
+          role="listbox"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
+        >
+          {options.map((opt) => {
             const active = opt.id === license;
             const p = priceFor(opt.id);
             return (
@@ -108,7 +124,11 @@ export function LicensePicker({
             );
           })}
           <li className="border-t border-slate-100 bg-slate-50 px-3 py-2">
-            <a href="/licensing" className="text-xs font-medium text-emerald-700 hover:underline" onClick={() => setOpen(false)}>
+            <a
+              href="/pricing/licenses"
+              className="text-xs font-medium text-emerald-700 hover:underline"
+              onClick={() => setOpen(false)}
+            >
               View license details
             </a>
           </li>

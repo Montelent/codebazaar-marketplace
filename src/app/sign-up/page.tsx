@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,12 +16,14 @@ export default function SignUpPage() {
     confirm: "",
   });
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setSuccess("");
     if (form.password !== form.confirm) {
       setError("Passwords do not match");
       return;
@@ -51,18 +52,13 @@ export default function SignUpPage() {
         setLoading(false);
         return;
       }
-      const login = await signIn("credentials", {
-        email: form.email,
-        password: form.password,
-        redirect: false,
-      });
       setLoading(false);
-      if (login?.error) {
-        router.push("/sign-in");
-        return;
-      }
-      router.push("/account");
-      router.refresh();
+      setSuccess(
+        data.verificationSent
+          ? "Account created. Check your email to verify, then sign in."
+          : "Account created and saved in the database. Check Admin → Users. Verification email may need RESEND_API_KEY."
+      );
+      setTimeout(() => router.push("/sign-in?registered=1"), 2500);
     } catch {
       setLoading(false);
       setError("Network error");
@@ -75,7 +71,7 @@ export default function SignUpPage() {
         Create your CodeBazaar account
       </h1>
       <p className="mt-2 text-center text-sm text-slate-500">
-        Buy items, download files, and manage your licenses.
+        Buy items, download files, and manage your licenses. We will email a verification link.
       </p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <div>
@@ -127,6 +123,9 @@ export default function SignUpPage() {
         </div>
         {error && (
           <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>
+        )}
+        {success && (
+          <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{success}</p>
         )}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Creating…" : "Create account"}

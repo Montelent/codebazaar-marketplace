@@ -29,7 +29,7 @@ export default function CheckoutPage() {
   const [email, setEmail] = useState(session?.user?.email || "");
   const [name, setName] = useState(session?.user?.name || "");
   const [method, setMethod] = useState<"free" | "manual" | "stripe">(
-    isFree ? "free" : "manual"
+    isFree ? "free" : "stripe"
   );
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,8 +57,10 @@ export default function CheckoutPage() {
           {isFree ? "Download ready" : "Order saved"}
         </h1>
         <p className="mt-2 text-slate-600">
-          Saved to the database{orderId ? ` (order ${orderId.slice(0, 8)}…)` : ""}. Use the same
-          email on any device to open Downloads and Purchases.
+          {isFree
+            ? "Free items are ready in your downloads."
+            : "Manual order is pending payment confirmation. Downloads unlock after the order is marked PAID."}
+          {orderId ? ` (order ${orderId.slice(0, 8)}…)` : ""}
         </p>
         <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-slate-700">
           {orderItems.map((i) => (
@@ -87,6 +89,10 @@ export default function CheckoutPage() {
       setError("Email is required so your purchases sync on every device");
       return;
     }
+    if (!isFree && method !== "stripe" && method !== "manual") {
+      setError("Choose a payment method");
+      return;
+    }
     setLoading(true);
     try {
       const payloadItems = items.map((i) => ({
@@ -98,13 +104,43 @@ export default function CheckoutPage() {
         price: Number(i.price),
       }));
 
+      // Paid cart + Stripe → redirect to Stripe Checkout (no free bypass)
+      if (!isFree && method === "stripe") {
+        const res = await fetch("/api/checkout/stripe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            name: name.trim(),
+            items: payloadItems,
+            currency: "usd",
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.url) {
+          setError(
+            data.error ||
+              "Could not start Stripe Checkout. Set STRIPE_SECRET_KEY on Vercel and enable Stripe in Admin → Payments."
+          );
+          return;
+        }
+        window.location.href = data.url as string;
+        return;
+      }
+
+      // Free items OR manual bank transfer only
+      if (!isFree && method === "free") {
+        setError("Payment required for paid items. Choose Stripe or manual bank transfer.");
+        return;
+      }
+
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
           name: name.trim(),
-          method: isFree ? "free" : method,
+          method: isFree ? "free" : "manual",
           items: payloadItems,
           total,
         }),
@@ -148,7 +184,7 @@ export default function CheckoutPage() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Checkout</h1>
       <p className="text-sm text-slate-500">
-        Purchases are stored in the database for any device.
+        Paid items require Stripe payment or a pending manual order. Downloads only unlock when the order is PAID.
       </p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-5">
@@ -181,24 +217,24 @@ export default function CheckoutPage() {
                   <input
                     type="radio"
                     name="pay"
-                    checked={method === "manual"}
-                    onChange={() => setMethod("manual")}
+                    checked={method === "stripe"}
+                    onChange={() => setMethod("stripe")}
                     className="accent-emerald-600"
                   />
                   <span className="text-sm">
-                    <strong>Manual / bank transfer</strong>
+                    <strong>Card (Stripe)</strong> — pay now, instant downloads
                   </span>
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
                   <input
                     type="radio"
                     name="pay"
-                    checked={method === "stripe"}
-                    onChange={() => setMethod("stripe")}
+                    checked={method === "manual"}
+                    onChange={() => setMethod("manual")}
                     className="accent-emerald-600"
                   />
                   <span className="text-sm">
-                    <strong>Card (Stripe)</strong>
+                    <strong>Manual / bank transfer</strong> — order stays PENDING until you mark it paid in Admin
                   </span>
                 </label>
               </div>
@@ -211,10 +247,14 @@ export default function CheckoutPage() {
 
           <Button type="submit" className="w-full" size="lg" disabled={loading}>
             {loading
-              ? "Saving to database…"
+              ? method === "stripe"
+                ? "Redirecting to Stripe…"
+                : "Saving…"
               : isFree
                 ? "Get free items"
-                : `Place order · ${formatPrice(total)}`}
+                : method === "stripe"
+                  ? `Pay with Stripe · ${formatPrice(total)}`
+                  : `Place manual order · ${formatPrice(total)}`}
           </Button>
         </form>
 

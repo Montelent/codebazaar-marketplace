@@ -22,6 +22,7 @@ import {
   Search,
   Palette,
   Menu,
+  Mail,
 } from "lucide-react";
 
 type LinkItem = { href: string; label: string; icon?: LucideIcon };
@@ -47,6 +48,7 @@ const SECTIONS: { title: string; items: LinkItem[] }[] = [
       { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
       { href: "/admin/authors", label: "Authors", icon: UserCircle },
       { href: "/admin/users", label: "Users", icon: Users },
+      { href: "/admin/newsletter", label: "Newsletter", icon: Mail },
     ],
   },
   {

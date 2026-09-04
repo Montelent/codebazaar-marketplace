@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { queryOne } from "@/lib/db";
+import {
+  createEmailVerificationToken,
+  ensureUserEmailColumns,
+} from "@/lib/users-db";
+import { appBaseUrl, sendEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
+    await ensureUserEmailColumns();
     const body = await req.json();
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
@@ -26,20 +32,60 @@ export async function POST(req: Request) {
       [email, username]
     );
     if (exists) {
-      return NextResponse.json({ error: "Email or username already registered" }, { status: 409 });
+      return NextResponse.json(
+        { error: "Email or username already registered" },
+        { status: 409 }
+      );
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await queryOne<{ id: string; email: string; username: string }>(
       `
-      INSERT INTO "User" ("id", "email", "username", "name", "passwordHash", "role", "createdAt", "updatedAt")
-      VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'BUYER', NOW(), NOW())
+      INSERT INTO "User" (
+        "id", "email", "username", "name", "passwordHash", "role",
+        newsletter, "createdAt", "updatedAt"
+      )
+      VALUES (
+        gen_random_uuid()::text, $1, $2, $3, $4, 'BUYER',
+        true, NOW(), NOW()
+      )
       RETURNING id, email, username
       `,
       [email, username, name || username, passwordHash]
     );
 
-    return NextResponse.json({ ok: true, user }, { status: 201 });
+    let verificationSent = false;
+    try {
+      const token = await createEmailVerificationToken(email);
+      const verifyUrl = `${appBaseUrl()}/api/auth/verify-email?token=${token}`;
+      const sent = await sendEmail({
+        to: email,
+        subject: "Verify your CodeBazaar email",
+        html: `
+          <p>Hi ${name || username},</p>
+          <p>Thanks for signing up at CodeBazaar. Please verify your email:</p>
+          <p><a href="${verifyUrl}">Verify email address</a></p>
+          <p>Or copy this link: ${verifyUrl}</p>
+          <p>This link expires in 24 hours.</p>
+        `,
+        text: `Verify your email: ${verifyUrl}`,
+      });
+      verificationSent = sent.ok;
+    } catch (err) {
+      console.error("verification email", err);
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        user,
+        verificationSent,
+        message: verificationSent
+          ? "Account created. Check your email to verify."
+          : "Account created. Verification email could not be sent (check RESEND_API_KEY).",
+      },
+      { status: 201 }
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : "DB error";
     return NextResponse.json({ error: message }, { status: 500 });

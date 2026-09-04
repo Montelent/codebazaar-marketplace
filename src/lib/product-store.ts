@@ -274,10 +274,12 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       title: string;
       regularPrice: number | string;
       extendedPrice: number | string;
+      salePriceRegular: number | string | null;
       thumbnailUrl: string | null;
       salesCount?: number | string | null;
     }>(
-      `SELECT id, slug, title, "regularPrice", "extendedPrice", "thumbnailUrl", "salesCount"
+      `SELECT id, slug, title, "regularPrice", "extendedPrice", "salePriceRegular",
+              "thumbnailUrl", "salesCount"
        FROM "Item" LIMIT 500`
     );
     for (const r of rows) {
@@ -307,6 +309,8 @@ export async function listProductCards(): Promise<ItemCardData[]> {
         thumbnailUrl: r.thumbnailUrl || base.thumbnailUrl,
         regularPrice: Number(r.regularPrice),
         extendedPrice: Number(r.extendedPrice),
+        salePriceRegular:
+          r.salePriceRegular != null ? Number(r.salePriceRegular) : null,
         salesCount: Number(r.salesCount ?? base.salesCount ?? 0),
       };
       byKey.set(r.id, card);
@@ -331,7 +335,8 @@ export async function listProductCards(): Promise<ItemCardData[]> {
     let extendedPrice = Number(item.extendedPrice);
     let title = item.title;
     let thumbnailUrl = item.thumbnailUrl;
-    let salePriceRegular = item.salePriceRegular;
+    let salePriceRegular =
+      item.salePriceRegular != null ? Number(item.salePriceRegular) : undefined;
 
     if (o) {
       if (o.isFree === true || Number(o.regularPrice) === 0) {
@@ -341,7 +346,10 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       } else {
         if (o.regularPrice != null) regularPrice = Number(o.regularPrice);
         if (o.extendedPrice != null) extendedPrice = Number(o.extendedPrice);
-        if (o.salePriceRegular != null) salePriceRegular = Number(o.salePriceRegular);
+        if (o.salePriceRegular !== undefined) {
+          salePriceRegular =
+            o.salePriceRegular == null ? undefined : Number(o.salePriceRegular);
+        }
       }
       if (o.title) title = o.title;
       if (o.thumbnailUrl) thumbnailUrl = o.thumbnailUrl;

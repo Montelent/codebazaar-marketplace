@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CKEditorField } from "@/components/editor/ck-editor";
 
-export default function NewPagePage() {
-  const router = useRouter();
+export default function EditPagePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const [form, setForm] = useState({
     title: "",
     slug: "",
@@ -16,17 +19,36 @@ export default function NewPagePage() {
     status: "DRAFT",
   });
   const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [booting, setBooting] = useState(true);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    fetch(`/api/admin/pages?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.page) {
+          setForm({
+            title: d.page.title || "",
+            slug: d.page.slug || "",
+            content: d.page.content || "",
+            status: d.page.status || "DRAFT",
+          });
+        }
+      })
+      .finally(() => setBooting(false));
+  }, [id]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setMsg("");
     const res = await fetch("/api/admin/pages", {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ id, ...form }),
     });
     const data = await res.json();
     setLoading(false);
@@ -34,34 +56,21 @@ export default function NewPagePage() {
       setError(typeof data.error === "string" ? data.error : "Failed");
       return;
     }
-    if (data.page?.id) router.push(`/admin/pages/${data.page.id}/edit`);
-    else router.push("/admin/pages");
+    setMsg("Saved");
   }
+
+  if (booting) return <div className="p-8 text-sm text-slate-500">Loading…</div>;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Link href="/admin/pages" className="text-sm text-emerald-600 hover:underline">
         ← Pages
       </Link>
-      <h1 className="text-2xl font-bold text-slate-900">New page</h1>
+      <h1 className="text-2xl font-bold text-slate-900">Edit page</h1>
       <form onSubmit={submit} className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
         <div>
           <label className="mb-1 block text-sm font-medium">Title</label>
-          <Input
-            value={form.title}
-            onChange={(e) => {
-              set("title", e.target.value);
-              if (!form.slug)
-                set(
-                  "slug",
-                  e.target.value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "-")
-                    .replace(/(^-|-$)/g, "")
-                );
-            }}
-            required
-          />
+          <Input value={form.title} onChange={(e) => set("title", e.target.value)} required />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Slug</label>
@@ -86,11 +95,10 @@ export default function NewPagePage() {
             <option value="PUBLISHED">Published</option>
           </select>
         </div>
-        {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
-        )}
+        {error && <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+        {msg && <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{msg}</p>}
         <Button type="submit" disabled={loading}>
-          {loading ? "Saving…" : "Save page"}
+          {loading ? "Saving…" : "Save changes"}
         </Button>
       </form>
     </div>

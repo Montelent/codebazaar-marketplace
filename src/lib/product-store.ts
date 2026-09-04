@@ -228,23 +228,22 @@ export async function getProductDetail(
     /* fall through */
   }
 
-  let o =
+  const wantSlug = slug || detail.slug || card.slug;
+  const fromMap =
     overrides[id] ||
     overrides[card.id] ||
     overrides[card.slug] ||
     (slug ? overrides[slug] : undefined) ||
     overrides[detail.slug];
-  if (!o) {
-    const wantSlug = slug || detail.slug || card.slug;
-    o = Object.values(overrides).find(
-      (x) =>
-        x &&
-        (x.slug === wantSlug ||
-          x.id === id ||
-          x.id === card.id ||
-          String(x.id) === String(id))
-    );
-  }
+  const fromValues = Object.values(overrides).find(
+    (x) =>
+      !!x &&
+      (x.slug === wantSlug ||
+        x.id === id ||
+        x.id === card.id ||
+        String(x.id) === String(id))
+  );
+  const o: ProductOverride | undefined = fromMap || fromValues;
   return applyOverride(detail, o);
 }
 

@@ -88,15 +88,12 @@ export async function POST(req: Request) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
-  const parsed = productSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+  // Pass through extra fields not in schema (attributes, mainFileUrl, galleryUrls)
   return PUT(
     new Request(req.url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: parsed.data.slug, ...parsed.data }),
+      body: JSON.stringify({ id: body.slug || body.id, ...body }),
     })
   );
 }
@@ -142,6 +139,8 @@ export async function PUT(req: Request) {
         tags: body.tags,
         attributes: body.attributes,
         categorySlug: body.categorySlug,
+        mainFileUrl: body.mainFileUrl,
+        galleryUrls: body.galleryUrls,
       });
     } catch (e) {
       console.error("override save:", e);

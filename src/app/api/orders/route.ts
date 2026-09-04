@@ -101,12 +101,26 @@ export async function POST(req: Request) {
     const items = (body.items || []) as IncomingItem[];
     const total = Number(body.total ?? 0);
     const method = String(body.method || "free");
+    const stripeSessionId = body.stripeSessionId ? String(body.stripeSessionId) : "";
 
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
     if (!items.length) {
       return NextResponse.json({ error: "No items" }, { status: 400 });
+    }
+
+    if (total > 0 && method === "free") {
+      return NextResponse.json(
+        { error: "Payment required for paid items. Choose Stripe or manual bank transfer." },
+        { status: 402 }
+      );
+    }
+    if (total > 0 && method === "stripe" && !stripeSessionId && !body.stripePaid) {
+      return NextResponse.json(
+        { error: "Complete Stripe payment before placing order" },
+        { status: 402 }
+      );
     }
 
     const buyerId = await resolveBuyerId(
@@ -139,7 +153,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Could not resolve products" }, { status: 400 });
     }
 
-    const status = method === "manual" ? "PENDING" : "PAID";
+    let status = "PAID";
+    if (method === "manual") status = "PENDING";
+    else if (method === "stripe") status = "PAID";
+    else if (method === "free" && total <= 0) status = "PAID";
+    else if (total > 0) status = "PENDING";
+
     const order = await queryOne<{ id: string }>(
       `
       INSERT INTO "Order" ("id", "buyerId", "total", "status", "createdAt", "updatedAt")
@@ -219,7 +238,7 @@ export async function GET(req: Request) {
       JOIN "OrderItem" oi ON oi."orderId" = o.id
       JOIN "Item" i ON i.id = oi."itemId"
       WHERE o."buyerId" IN (${placeholders})
-        AND o.status IN ('PAID', 'PENDING')
+        AND o.status = 'PAID'
       ORDER BY o."createdAt" DESC
       `,
       buyerIds

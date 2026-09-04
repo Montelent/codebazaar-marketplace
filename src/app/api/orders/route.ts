@@ -116,9 +116,15 @@ export async function POST(req: Request) {
         { status: 402 }
       );
     }
-    if (total > 0 && method === "stripe" && !stripeSessionId && !body.stripePaid) {
+    if (total > 0 && method === "stripe" && !stripeSessionId && body.stripePaid !== true) {
       return NextResponse.json(
-        { error: "Complete Stripe payment before placing order" },
+        { error: "Complete Stripe Checkout before the order is marked paid" },
+        { status: 402 }
+      );
+    }
+    if (total > 0 && method !== "stripe" && method !== "manual") {
+      return NextResponse.json(
+        { error: "Invalid payment method for paid cart" },
         { status: 402 }
       );
     }
@@ -153,11 +159,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Could not resolve products" }, { status: 400 });
     }
 
-    let status = "PAID";
-    if (method === "manual") status = "PENDING";
-    else if (method === "stripe") status = "PAID";
-    else if (method === "free" && total <= 0) status = "PAID";
+    // Downloads only unlock for PAID. Never mark paid without proof.
+    let status = "PENDING";
+    if (method === "free" && total <= 0) status = "PAID";
+    else if (method === "stripe" && (stripeSessionId || body.stripePaid === true)) {
+      status = "PAID";
+    } else if (method === "manual") status = "PENDING";
     else if (total > 0) status = "PENDING";
+    else status = "PAID";
 
     const order = await queryOne<{ id: string }>(
       `

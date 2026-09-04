@@ -9,13 +9,9 @@ export default async function AppearanceSettingsPage() {
   return (
     <div>
       <SettingsForm
-        title="Colors & hero"
-        description="Pick colors with the color wheel or type a hex code. Optional gradient for the hero background."
+        title="Colors & hero background"
+        description="Brand colors and hero background only. Edit hero title/subtitle under Settings → Homepage (not here) to avoid duplicates."
         initial={{
-          "homepage.heroTitle": s["homepage.heroTitle"] ?? "",
-          "homepage.heroHighlight": s["homepage.heroHighlight"] ?? "",
-          "homepage.heroSubtitle": s["homepage.heroSubtitle"] ?? "",
-          "homepage.heroSearchPlaceholder": s["homepage.heroSearchPlaceholder"] ?? "",
           "homepage.heroImageUrl": s["homepage.heroImageUrl"] ?? "",
           "homepage.heroBgColor": s["homepage.heroBgColor"] ?? "#0f172a",
           "homepage.heroGradient":
@@ -26,47 +22,34 @@ export default async function AppearanceSettingsPage() {
           "homepage.accentColor": s["homepage.accentColor"] ?? "#10b981",
           "homepage.buttonColor": s["homepage.buttonColor"] ?? "#059669",
           "homepage.buttonTextColor": s["homepage.buttonTextColor"] ?? "#ffffff",
-          "homepage.heroCtaText": s["homepage.heroCtaText"] ?? "Search",
-          "homepage.heroCtaLink": s["homepage.heroCtaLink"] ?? "/search",
         }}
         fields={[
-          { key: "homepage.heroTitle", label: "Hero title" },
-          {
-            key: "homepage.heroHighlight",
-            label: "Hero highlight text (optional emphasis)",
-          },
-          { key: "homepage.heroSubtitle", label: "Hero subtitle", type: "textarea" },
-          {
-            key: "homepage.heroSearchPlaceholder",
-            label: "Search box placeholder",
-          },
           {
             key: "homepage.heroImageUrl",
             label: "Hero background image URL",
             type: "url",
-            help: "Optional image on top of solid color or gradient.",
+            help: "Optional image over solid color or gradient.",
           },
           {
             key: "homepage.heroUseGradient",
-            label: "Use gradient for hero background (instead of solid color)",
+            label: "Use gradient for hero background",
             type: "checkbox",
           },
           {
             key: "homepage.heroBgColor",
             label: "Hero solid background color",
             type: "color",
-            help: "Used when gradient is off.",
           },
           {
             key: "homepage.heroGradient",
-            label: "Hero gradient",
+            label: "Hero gradient (from | to | angle)",
             type: "gradient",
-            help: "From / To colors + angle. Used when “Use gradient” is checked.",
+            help: "Used when “Use gradient” is checked.",
           },
           {
             key: "homepage.heroOverlay",
-            label: "Hero dark overlay strength",
-            help: "0 to 1 (e.g. 0.55)",
+            label: "Hero dark overlay strength (0–1)",
+            help: "e.g. 0.55",
           },
           {
             key: "homepage.primaryColor",
@@ -75,21 +58,19 @@ export default async function AppearanceSettingsPage() {
           },
           {
             key: "homepage.accentColor",
-            label: "Accent color",
+            label: "Accent color (highlight text)",
             type: "color",
           },
           {
             key: "homepage.buttonColor",
-            label: "Hero button background",
+            label: "Primary button color",
             type: "color",
           },
           {
             key: "homepage.buttonTextColor",
-            label: "Hero button text color",
+            label: "Primary button text color",
             type: "color",
           },
-          { key: "homepage.heroCtaText", label: "Hero search button label" },
-          { key: "homepage.heroCtaLink", label: "Hero CTA link (if not search)" },
         ]}
       />
     </div>

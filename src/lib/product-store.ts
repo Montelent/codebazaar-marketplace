@@ -130,8 +130,18 @@ function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetai
         : o.regularPrice != null
           ? Number(o.regularPrice)
           : detail.extendedPrice,
-    salePriceRegular: isFree ? null : (o.salePriceRegular ?? detail.salePriceRegular),
-    salePriceExtended: isFree ? null : (o.salePriceExtended ?? detail.salePriceExtended),
+    salePriceRegular: isFree
+      ? null
+      : o.salePriceRegular !== undefined
+        ? o.salePriceRegular
+        : detail.salePriceRegular,
+    salePriceExtended: isFree
+      ? null
+      : o.salePriceExtended !== undefined
+        ? o.salePriceExtended
+        : o.regularPrice != null || o.extendedPrice != null
+          ? null
+          : detail.salePriceExtended,
     thumbnailUrl: o.thumbnailUrl ?? detail.thumbnailUrl,
     demoUrl: o.demoUrl ?? detail.demoUrl,
     galleryUrls: o.galleryUrls != null && o.galleryUrls.length ? o.galleryUrls : detail.galleryUrls,
@@ -202,6 +212,7 @@ export async function getProductDetail(
         extendedPrice: Number(db.extendedPrice),
         salePriceRegular:
           db.salePriceRegular != null ? Number(db.salePriceRegular) : null,
+        salePriceExtended: null,
         thumbnailUrl: db.thumbnailUrl || detail.thumbnailUrl,
         demoUrl: db.demoUrl || detail.demoUrl,
         features: Array.isArray(db.features)

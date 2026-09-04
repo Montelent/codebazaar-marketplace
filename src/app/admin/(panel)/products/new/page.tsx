@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { CKEditorField } from "@/components/editor/ck-editor";
+import { MediaField, ScreenshotFields } from "@/components/admin/media-field";
 
 type Cat = { name: string; slug: string };
 type AttrMap = Record<string, string[]>;
@@ -18,32 +19,31 @@ export default function NewProductPage() {
   const [categories, setCategories] = useState<Cat[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [attrPresets, setAttrPresets] = useState<AttrMap>({});
-
   const [form, setForm] = useState({
-    title: "",
-    slug: "",
-    description: "",
-    regularPrice: "49",
-    extendedPrice: "249",
-    salePriceRegular: "",
-    categorySlug: "javascript",
-    thumbnailUrl: "",
-    demoUrl: "",
-    isFree: false,
+    title: "", slug: "", description: "", regularPrice: "49", extendedPrice: "249",
+    salePriceRegular: "", categorySlug: "javascript", thumbnailUrl: "", demoUrl: "",
+    mainFileUrl: "", isFree: false,
   });
+  const [screenshots, setScreenshots] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [features, setFeatures] = useState<string[]>([""]);
   const [attrSelected, setAttrSelected] = useState<Record<string, string[]>>({});
   const [customAttrs, setCustomAttrs] = useState<{ label: string; value: string }[]>([]);
 
+  function loadTaxonomy(categorySlug: string) {
+    const q = categorySlug ? `?category=${encodeURIComponent(categorySlug)}` : "";
+    return fetch(`/api/admin/taxonomy${q}`).then((r) => r.json()).then((tax) => {
+      setAllTags(tax.tags || []);
+      setAttrPresets(tax.attributes || {});
+    });
+  }
+
   useEffect(() => {
     Promise.all([
       fetch("/api/admin/categories").then((r) => r.json()).catch(() => ({ categories: [] })),
-      fetch("/api/admin/taxonomy").then((r) => r.json()).catch(() => ({ tags: [], attributes: {} })),
-    ]).then(([cats, tax]) => {
+      loadTaxonomy("javascript"),
+    ]).then(([cats]) => {
       setCategories(cats.categories || []);
-      setAllTags(tax.tags || []);
-      setAttrPresets(tax.attributes || {});
       if (cats.categories?.[0]?.slug) {
         setForm((f) => ({ ...f, categorySlug: f.categorySlug || cats.categories[0].slug }));
       }
@@ -51,13 +51,14 @@ export default function NewProductPage() {
   }, []);
 
   const set = (k: string, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
-
-  function toggleTag(t: string) {
-    setSelectedTags((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
+  function onCategoryChange(slug: string) {
+    set("categorySlug", slug);
+    setAttrSelected({});
+    loadTaxonomy(slug);
   }
-
+  function toggleTag(t: string) {
+    setSelectedTags((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
+  }
   function toggleAttr(label: string, value: string) {
     setAttrSelected((prev) => {
       const cur = prev[label] || [];
@@ -65,7 +66,6 @@ export default function NewProductPage() {
       return { ...prev, [label]: next };
     });
   }
-
   function buildAttributes() {
     const out: { label: string; value: string }[] = [];
     for (const [label, vals] of Object.entries(attrSelected)) {
@@ -82,28 +82,18 @@ export default function NewProductPage() {
     setLoading(true);
     setError("");
     try {
-      const slug =
-        form.slug ||
-        form.title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/(^-|-$)/g, "");
+      const slug = form.slug || form.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       const body = {
-        id: slug,
-        title: form.title,
-        slug,
-        description: form.description,
+        id: slug, title: form.title, slug, description: form.description,
         isFree: Boolean(form.isFree),
         regularPrice: form.isFree ? 0 : Number(form.regularPrice),
         extendedPrice: form.isFree ? 0 : Number(form.extendedPrice),
-        salePriceRegular: form.isFree
-          ? null
-          : form.salePriceRegular
-            ? Number(form.salePriceRegular)
-            : null,
+        salePriceRegular: form.isFree ? null : form.salePriceRegular ? Number(form.salePriceRegular) : null,
         categorySlug: form.categorySlug,
         thumbnailUrl: form.thumbnailUrl || undefined,
         demoUrl: form.demoUrl || undefined,
+        mainFileUrl: form.mainFileUrl || undefined,
+        galleryUrls: screenshots,
         features: features.filter(Boolean),
         tags: selectedTags,
         attributes: buildAttributes(),
@@ -118,8 +108,7 @@ export default function NewProductPage() {
         setError(data.error || data.message || `Save failed (${res.status})`);
         return;
       }
-      const editId = data.item?.id || data.id || slug;
-      router.push(`/admin/products/${editId}/edit`);
+      router.push(`/admin/products/${data.item?.id || data.id || slug}/edit`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -130,136 +119,81 @@ export default function NewProductPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <Link href="/admin/products" className="text-sm text-emerald-600 hover:underline">
-          ← Products
-        </Link>
+        <Link href="/admin/products" className="text-sm text-emerald-600 hover:underline">← Products</Link>
         <h1 className="mt-2 text-2xl font-bold text-slate-900">Add product</h1>
-        <p className="text-sm text-slate-500">
-          Same options as editing — category, tags, browsers, framework, features.
-        </p>
       </div>
-
       <form onSubmit={onSubmit} className="space-y-6">
         <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="text-sm font-semibold uppercase text-slate-500">Basics</h2>
           <Field label="Title">
-            <Input
-              value={form.title}
-              onChange={(e) => {
-                set("title", e.target.value);
-                if (!form.slug) {
-                  set(
-                    "slug",
-                    e.target.value
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]+/g, "-")
-                      .replace(/(^-|-$)/g, "")
-                  );
-                }
-              }}
-              required
-            />
+            <Input value={form.title} onChange={(e) => {
+              set("title", e.target.value);
+              if (!form.slug) set("slug", e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
+            }} required />
           </Field>
           <Field label="Slug">
             <Input value={form.slug} onChange={(e) => set("slug", e.target.value)} required />
           </Field>
           <Field label="Description">
-            <CKEditorField
-              value={form.description}
-              onChange={(v) => set("description", v)}
-              minHeight={200}
-            />
+            <CKEditorField value={form.description} onChange={(v) => set("description", v)} minHeight={200} />
           </Field>
           <label className="flex items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              checked={form.isFree}
-              onChange={(e) => set("isFree", e.target.checked)}
-              className="accent-emerald-600"
-            />
+            <input type="checkbox" checked={form.isFree} onChange={(e) => set("isFree", e.target.checked)} className="accent-emerald-600" />
             Free product
           </label>
           {!form.isFree && (
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Regular price">
-                <Input type="number" min={0} step="0.01" value={form.regularPrice} onChange={(e) => set("regularPrice", e.target.value)} />
-              </Field>
-              <Field label="Extended price">
-                <Input type="number" min={0} step="0.01" value={form.extendedPrice} onChange={(e) => set("extendedPrice", e.target.value)} />
-              </Field>
-              <Field label="Sale price">
-                <Input type="number" min={0} step="0.01" value={form.salePriceRegular} onChange={(e) => set("salePriceRegular", e.target.value)} />
-              </Field>
+              <Field label="Regular price"><Input type="number" min={0} step="0.01" value={form.regularPrice} onChange={(e) => set("regularPrice", e.target.value)} /></Field>
+              <Field label="Extended price"><Input type="number" min={0} step="0.01" value={form.extendedPrice} onChange={(e) => set("extendedPrice", e.target.value)} /></Field>
+              <Field label="Sale price"><Input type="number" min={0} step="0.01" value={form.salePriceRegular} onChange={(e) => set("salePriceRegular", e.target.value)} /></Field>
             </div>
           )}
-          <Field label="Thumbnail URL">
-            <Input value={form.thumbnailUrl} onChange={(e) => set("thumbnailUrl", e.target.value)} />
+        </section>
+
+        <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Media & files</h2>
+          <MediaField label="Thumbnail" value={form.thumbnailUrl} onChange={(v) => set("thumbnailUrl", v)}
+            help="External image URL or upload a small image (under ~900KB)." />
+          <ScreenshotFields label="Screenshots (optional)" values={screenshots} onChange={setScreenshots}
+            help="Add external image URLs or upload images." />
+          <Field label="Live demo URL">
+            <Input type="url" placeholder="https://…" value={form.demoUrl} onChange={(e) => set("demoUrl", e.target.value)} />
           </Field>
-          <Field label="Demo URL">
-            <Input value={form.demoUrl} onChange={(e) => set("demoUrl", e.target.value)} />
+          <Field label="Main download file URL">
+            <Input type="url" placeholder="https://…zip or storage link" value={form.mainFileUrl} onChange={(e) => set("mainFileUrl", e.target.value)} />
+            <p className="mt-1 text-xs text-slate-500">Host ZIP on S3/Drive/Dropbox and paste the URL (recommended for large files on Vercel).</p>
           </Field>
         </section>
 
         <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase text-slate-500">Category</h2>
-            <Link href="/admin/categories" className="text-xs text-emerald-600 hover:underline">
-              Manage categories
-            </Link>
+            <Link href="/admin/categories" className="text-xs text-emerald-600 hover:underline">Manage</Link>
           </div>
-          <select
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            value={form.categorySlug}
-            onChange={(e) => set("categorySlug", e.target.value)}
-          >
-            {categories.length === 0 && (
-              <option value={form.categorySlug}>{form.categorySlug}</option>
-            )}
-            {categories.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
+          <select className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" value={form.categorySlug} onChange={(e) => onCategoryChange(e.target.value)}>
+            {categories.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
           </select>
+          <p className="text-xs text-slate-500">Attributes below match this category (CodeCanyon-style).</p>
         </section>
 
         <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase text-slate-500">Tags</h2>
-            <Link href="/admin/tags" className="text-xs text-emerald-600 hover:underline">
-              Manage tags
-            </Link>
+            <Link href="/admin/tags" className="text-xs text-emerald-600 hover:underline">Manage</Link>
           </div>
           <div className="flex flex-wrap gap-2">
             {allTags.map((t) => {
               const on = selectedTags.includes(t);
               return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => toggleTag(t)}
-                  className={
-                    on
-                      ? "rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white"
-                      : "rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
-                  }
-                >
-                  {t}
-                </button>
+                <button key={t} type="button" onClick={() => toggleTag(t)}
+                  className={on ? "rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white" : "rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"}>{t}</button>
               );
             })}
           </div>
         </section>
 
         <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase text-slate-500">
-              Attributes (browsers, framework, files…)
-            </h2>
-            <Link href="/admin/attributes" className="text-xs text-emerald-600 hover:underline">
-              Manage attributes
-            </Link>
-          </div>
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Attributes for this category</h2>
           {Object.entries(attrPresets).map(([label, options]) => (
             <div key={label}>
               <p className="mb-2 text-sm font-medium text-slate-800">{label}</p>
@@ -267,18 +201,8 @@ export default function NewProductPage() {
                 {options.map((opt) => {
                   const on = (attrSelected[label] || []).includes(opt);
                   return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => toggleAttr(label, opt)}
-                      className={
-                        on
-                          ? "rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white"
-                          : "rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-emerald-300"
-                      }
-                    >
-                      {opt}
-                    </button>
+                    <button key={opt} type="button" onClick={() => toggleAttr(label, opt)}
+                      className={on ? "rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white" : "rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-emerald-300"}>{opt}</button>
                   );
                 })}
               </div>
@@ -288,39 +212,12 @@ export default function NewProductPage() {
             <p className="mb-2 text-sm font-medium text-slate-800">Custom attributes</p>
             {customAttrs.map((a, i) => (
               <div key={i} className="mb-2 grid grid-cols-[1fr_1fr_auto] gap-2">
-                <Input
-                  placeholder="Label"
-                  value={a.label}
-                  onChange={(e) => {
-                    const n = [...customAttrs];
-                    n[i] = { ...n[i], label: e.target.value };
-                    setCustomAttrs(n);
-                  }}
-                />
-                <Input
-                  placeholder="Value"
-                  value={a.value}
-                  onChange={(e) => {
-                    const n = [...customAttrs];
-                    n[i] = { ...n[i], value: e.target.value };
-                    setCustomAttrs(n);
-                  }}
-                />
-                <button
-                  type="button"
-                  className="rounded border p-2"
-                  onClick={() => setCustomAttrs((list) => list.filter((_, j) => j !== i))}
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <Input placeholder="Label" value={a.label} onChange={(e) => { const n = [...customAttrs]; n[i] = { ...n[i], label: e.target.value }; setCustomAttrs(n); }} />
+                <Input placeholder="Value" value={a.value} onChange={(e) => { const n = [...customAttrs]; n[i] = { ...n[i], value: e.target.value }; setCustomAttrs(n); }} />
+                <button type="button" className="rounded border p-2" onClick={() => setCustomAttrs((list) => list.filter((_, j) => j !== i))}><X className="h-4 w-4" /></button>
               </div>
             ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setCustomAttrs((a) => [...a, { label: "", value: "" }])}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => setCustomAttrs((a) => [...a, { label: "", value: "" }])}>
               <Plus className="h-4 w-4" /> Add custom attribute
             </Button>
           </div>
@@ -330,21 +227,8 @@ export default function NewProductPage() {
           <h2 className="text-sm font-semibold uppercase text-slate-500">Features</h2>
           {features.map((f, i) => (
             <div key={i} className="flex gap-2">
-              <Input
-                value={f}
-                onChange={(e) => {
-                  const n = [...features];
-                  n[i] = e.target.value;
-                  setFeatures(n);
-                }}
-              />
-              <button
-                type="button"
-                className="rounded border p-2"
-                onClick={() => setFeatures((list) => list.filter((_, j) => j !== i))}
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <Input value={f} onChange={(e) => { const n = [...features]; n[i] = e.target.value; setFeatures(n); }} />
+              <button type="button" className="rounded border p-2" onClick={() => setFeatures((list) => list.filter((_, j) => j !== i))}><X className="h-4 w-4" /></button>
             </div>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={() => setFeatures((f) => [...f, ""])}>
@@ -352,12 +236,8 @@ export default function NewProductPage() {
           </Button>
         </section>
 
-        {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
-        )}
-        <Button type="submit" disabled={loading}>
-          {loading ? "Saving…" : "Create product"}
-        </Button>
+        {error && <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+        <Button type="submit" disabled={loading}>{loading ? "Saving…" : "Create product"}</Button>
       </form>
     </div>
   );

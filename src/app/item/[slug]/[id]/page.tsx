@@ -41,6 +41,8 @@ export default function ItemDetailPage({
   const [showAllChangelog, setShowAllChangelog] = useState(false);
   const [showAllAttrs, setShowAllAttrs] = useState(false);
   const [added, setAdded] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [galleryIdx, setGalleryIdx] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,11 +68,16 @@ export default function ItemDetailPage({
               : base.descriptionHtml,
           thumbnailUrl: p.thumbnailUrl || base.thumbnailUrl,
           demoUrl: p.demoUrl ?? base.demoUrl,
-          regularPrice: p.regularPrice != null ? Number(p.regularPrice) : base.regularPrice,
-          extendedPrice:
-            p.extendedPrice != null ? Number(p.extendedPrice) : base.extendedPrice,
+          regularPrice: Number(p.regularPrice ?? 0),
+          extendedPrice: Number(p.extendedPrice ?? 0),
           salePriceRegular:
-            p.salePriceRegular !== undefined ? p.salePriceRegular : base.salePriceRegular,
+            p.salePriceRegular != null && p.salePriceRegular !== ""
+              ? Number(p.salePriceRegular as number)
+              : null,
+          salePriceExtended:
+            p.salePriceExtended != null && p.salePriceExtended !== ""
+              ? Number(p.salePriceExtended as number)
+              : null,
           features: Array.isArray(p.features) ? p.features : base.features,
           requirements: Array.isArray(p.requirements) ? p.requirements : base.requirements,
           changelogs:
@@ -111,10 +118,17 @@ export default function ItemDetailPage({
     product.salePriceExtended,
     license
   );
-  const supportAddon = extendSupport ? 14.5 : 0;
+  const supportAddon = extendSupport
+    ? Math.max(5, Math.round(Number(product.regularPrice || 0) * 0.3 * 100) / 100)
+    : 0;
   const isFree =
     Number(product.regularPrice) <= 0 ||
     (product.salePriceRegular != null && Number(product.salePriceRegular) <= 0);
+
+  const gallery =
+    product.galleryUrls && product.galleryUrls.length
+      ? product.galleryUrls
+      : [product.thumbnailUrl].filter(Boolean);
 
   const handleAdd = () => {
     for (let i = 0; i < qty; i++) {
@@ -190,22 +204,107 @@ export default function ItemDetailPage({
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-6 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-8">
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-            <div className="relative aspect-[16/9] w-full">
-              <Image src={product.thumbnailUrl} alt={product.title} fill className="object-cover" priority sizes="(max-width: 1024px) 100vw, 66vw" />
-            </div>
+            <button
+              type="button"
+              className="relative aspect-[16/9] w-full cursor-zoom-in"
+              onClick={() => {
+                setGalleryIdx(0);
+                setLightbox(gallery[0] || product.thumbnailUrl);
+              }}
+            >
+              <Image
+                src={gallery[galleryIdx] || product.thumbnailUrl}
+                alt={product.title}
+                fill
+                className="object-cover"
+                priority
+                sizes="(max-width: 1024px) 100vw, 66vw"
+              />
+            </button>
+            {gallery.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto border-t border-slate-200 bg-white p-3">
+                {gallery.map((url, i) => (
+                  <button
+                    key={url + i}
+                    type="button"
+                    onClick={() => {
+                      setGalleryIdx(i);
+                      setLightbox(url);
+                    }}
+                    className={
+                      "relative h-16 w-24 shrink-0 overflow-hidden rounded-md border-2 " +
+                      (galleryIdx === i ? "border-emerald-500" : "border-slate-200")
+                    }
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 border-t border-slate-200 bg-white p-3">
               {product.demoUrl && (
                 <a href={product.demoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">
                   Live Preview <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               )}
-              {(product.galleryUrls || []).length > 1 && (
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700">
-                  <ImageIcon className="h-3.5 w-3.5" /> {(product.galleryUrls || []).length} screenshots
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setGalleryIdx(0);
+                  setLightbox(gallery[0] || product.thumbnailUrl);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-emerald-400 hover:text-emerald-700"
+              >
+                <ImageIcon className="h-3.5 w-3.5" /> {gallery.length} screenshots
+              </button>
             </div>
           </div>
+
+          {lightbox && (
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+              onClick={() => setLightbox(null)}
+              role="dialog"
+              aria-modal="true"
+            >
+              <button
+                type="button"
+                className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-900"
+                onClick={() => setLightbox(null)}
+              >
+                Close
+              </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={lightbox}
+                alt="Screenshot"
+                className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {gallery.length > 1 && (
+                <div className="absolute bottom-6 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  {gallery.map((url, i) => (
+                    <button
+                      key={url + i}
+                      type="button"
+                      onClick={() => {
+                        setGalleryIdx(i);
+                        setLightbox(url);
+                      }}
+                      className={
+                        "h-12 w-16 overflow-hidden rounded border-2 " +
+                        (lightbox === url ? "border-emerald-400" : "border-white/40")
+                      }
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="prose prose-slate mt-6 max-w-none text-sm leading-relaxed">
             <div dangerouslySetInnerHTML={{ __html: product.descriptionHtml || "" }} />
@@ -297,7 +396,8 @@ export default function ItemDetailPage({
                   <li className="flex items-start gap-2 text-sm text-slate-700">
                     <input type="checkbox" id="extend-support" checked={extendSupport} onChange={(e) => setExtendSupport(e.target.checked)} className="mt-1 accent-emerald-600" />
                     <label htmlFor="extend-support" className="cursor-pointer">
-                      Extend support to 12 months <span className="font-semibold text-slate-800">$14.50</span>
+                      Extend support to 12 months{" "}
+                      <span className="font-semibold text-slate-800">{formatPrice(supportAddon || 5)}</span>
                     </label>
                   </li>
                 )}

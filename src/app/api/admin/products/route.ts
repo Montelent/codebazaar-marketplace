@@ -88,7 +88,6 @@ export async function POST(req: Request) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
-  // Pass through extra fields not in schema (attributes, mainFileUrl, galleryUrls)
   return PUT(
     new Request(req.url, {
       method: "PUT",
@@ -123,27 +122,40 @@ export async function PUT(req: Request) {
     const featuresJson = JSON.stringify(body.features ?? []);
     const tagsJson = JSON.stringify(body.tags ?? []);
 
+    const overridePayload = {
+      id: String(body.id),
+      title,
+      slug,
+      description,
+      regularPrice,
+      extendedPrice,
+      salePriceRegular,
+      isFree,
+      thumbnailUrl,
+      demoUrl: demoUrl || undefined,
+      features: body.features as string[] | undefined,
+      tags: body.tags as string[] | undefined,
+      attributes: body.attributes as { label: string; value: string }[] | undefined,
+      categorySlug: body.categorySlug as string | undefined,
+      mainFileUrl: body.mainFileUrl as string | undefined,
+      galleryUrls: body.galleryUrls as string[] | undefined,
+    };
+
     try {
-      await saveOverride(String(body.id), {
-        id: String(body.id),
-        title,
-        slug,
-        description,
-        regularPrice,
-        extendedPrice,
-        salePriceRegular,
-        isFree,
-        thumbnailUrl,
-        demoUrl: demoUrl || undefined,
-        features: body.features,
-        tags: body.tags,
-        attributes: body.attributes,
-        categorySlug: body.categorySlug,
-        mainFileUrl: body.mainFileUrl,
-        galleryUrls: body.galleryUrls,
-      });
+      await saveOverride(String(body.id), overridePayload);
+      await saveOverride(slug, { ...overridePayload, id: slug });
     } catch (e) {
       console.error("override save:", e);
+    }
+
+    // Always push prices to Item by slug (even if INSERT path fails later)
+    try {
+      await query(
+        `UPDATE "Item" SET "regularPrice" = $1, "extendedPrice" = $2, "salePriceRegular" = $3, "updatedAt" = NOW() WHERE "slug" = $4`,
+        [regularPrice, extendedPrice, salePriceRegular, slug]
+      );
+    } catch (e) {
+      console.error("price update:", e);
     }
 
     const categoryId = await ensureCategory(String(body.categorySlug || "javascript"));
@@ -199,6 +211,7 @@ export async function PUT(req: Request) {
         slug: row?.slug || slug,
         title,
         regularPrice,
+        extendedPrice,
         isFree,
       },
       message: "Product saved to Postgres",

@@ -99,7 +99,7 @@ export async function saveOverride(id: string, data: ProductOverride) {
 function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetail {
   if (!o) return detail;
   const isFree = o.isFree === true || Number(o.regularPrice) === 0;
-  const attrs = (o.attributes || detail.attributes || []).filter(
+  const attrs = (o.attributes || []).filter(
     (a) => !["Last Update", "Created", "Published", "Updated"].includes(a.label)
   );
   const lastUpdate = o.updatedAt
@@ -147,7 +147,12 @@ function applyOverride(detail: ProductDetail, o?: ProductOverride): ProductDetai
     galleryUrls: o.galleryUrls != null && o.galleryUrls.length ? o.galleryUrls : detail.galleryUrls,
     features: o.features != null ? o.features : detail.features,
     tags: o.tags != null ? o.tags : detail.tags,
-    attributes: o.attributes != null ? attrs : detail.attributes,
+    attributes: o.attributes != null ? attrs : [],
+    requirements: o.requirements != null
+      ? Array.isArray(o.requirements)
+        ? o.requirements
+        : [String(o.requirements)]
+      : [],
     lastUpdate,
     createdAt,
   };
@@ -158,11 +163,38 @@ export async function getProductDetail(
   slug?: string
 ): Promise<ProductDetail | null> {
   const overrides = await getOverrides();
-  const card =
-    MOCK_ITEMS.find((i) => i.id === id || i.slug === slug || i.slug === id) ??
-    MOCK_ITEMS[0];
-  let detail: ProductDetail =
-    PRODUCT_DETAILS[card.id] ?? detailFromCard(card);
+  // Never fall back to an unrelated mock product (avoids flash of wrong item)
+  const card = MOCK_ITEMS.find(
+    (i) => i.id === id || i.slug === slug || i.slug === id || i.id === slug
+  );
+  let detail: ProductDetail = card
+    ? PRODUCT_DETAILS[card.id] ?? detailFromCard(card)
+    : detailFromCard({
+        id,
+        slug: slug || id,
+        title: "",
+        regularPrice: 0,
+        extendedPrice: 0,
+        thumbnailUrl: "https://picsum.photos/seed/" + (slug || id) + "/640/400",
+        author: { username: "codebazaar", avatarUrl: null },
+        category: { name: "Code", slug: "code" },
+        ratingAvg: 0,
+        ratingCount: 0,
+        salesCount: 0,
+      });
+  if (!card) {
+    detail = {
+      ...detail,
+      descriptionHtml: "",
+      features: [],
+      requirements: [],
+      attributes: [],
+      changelogs: [],
+      licenseFeatures: [],
+      tags: [],
+      galleryUrls: [],
+    };
+  }
 
   try {
     const db = await queryOne<{
@@ -207,7 +239,7 @@ export async function getProductDetail(
         id: db.id,
         slug: db.slug,
         title: db.title,
-        descriptionHtml: db.description || detail.descriptionHtml,
+        descriptionHtml: db.description || "",
         regularPrice: Number(db.regularPrice),
         extendedPrice: Number(db.extendedPrice),
         salePriceRegular:
@@ -215,10 +247,13 @@ export async function getProductDetail(
         salePriceExtended: null,
         thumbnailUrl: db.thumbnailUrl || detail.thumbnailUrl,
         demoUrl: db.demoUrl || detail.demoUrl,
-        features: Array.isArray(db.features)
-          ? (db.features as string[])
-          : detail.features,
-        tags: Array.isArray(db.tags) ? (db.tags as string[]) : detail.tags,
+        features: Array.isArray(db.features) ? (db.features as string[]) : [],
+        tags: Array.isArray(db.tags) ? (db.tags as string[]) : [],
+        requirements: [],
+        attributes: [],
+        changelogs: [],
+        licenseFeatures: [],
+        galleryUrls: [],
         category: {
           name: db.category_name || detail.category.name,
           slug: db.category_slug || detail.category.slug,
@@ -239,11 +274,11 @@ export async function getProductDetail(
     /* fall through */
   }
 
-  const wantSlug = slug || detail.slug || card.slug;
+  const wantSlug = slug || detail.slug || id;
   const fromMap =
     overrides[id] ||
-    overrides[card.id] ||
-    overrides[card.slug] ||
+    (card ? overrides[card.id] : undefined) ||
+    (card ? overrides[card.slug] : undefined) ||
     (slug ? overrides[slug] : undefined) ||
     overrides[detail.slug];
   const fromValues = Object.values(overrides).find(
@@ -251,7 +286,7 @@ export async function getProductDetail(
       !!x &&
       (x.slug === wantSlug ||
         x.id === id ||
-        x.id === card.id ||
+        (card && x.id === card.id) ||
         String(x.id) === String(id))
   );
   const o: ProductOverride | undefined = fromMap || fromValues;
@@ -263,8 +298,9 @@ export async function listProductCards(): Promise<ItemCardData[]> {
   const byKey = new Map<string, ItemCardData>();
 
   for (const item of MOCK_ITEMS) {
-    byKey.set(item.id, { ...item });
-    byKey.set(item.slug, byKey.get(item.id)!);
+    const m = { ...item, createdAtSort: 0 } as ItemCardData & { createdAtSort: number };
+    byKey.set(item.id, m);
+    byKey.set(item.slug, m);
   }
 
   try {
@@ -277,10 +313,14 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       salePriceRegular: number | string | null;
       thumbnailUrl: string | null;
       salesCount?: number | string | null;
+      createdAt?: Date | string | null;
+      updatedAt?: Date | string | null;
     }>(
       `SELECT id, slug, title, "regularPrice", "extendedPrice", "salePriceRegular",
-              "thumbnailUrl", "salesCount"
-       FROM "Item" LIMIT 500`
+              "thumbnailUrl", "salesCount", "createdAt", "updatedAt"
+       FROM "Item"
+       ORDER BY "createdAt" DESC NULLS LAST
+       LIMIT 500`
     );
     for (const r of rows) {
       const base =
@@ -301,7 +341,10 @@ export async function listProductCards(): Promise<ItemCardData[]> {
           category: { name: "Code", slug: "code" },
         } as ItemCardData);
 
-      const card: ItemCardData = {
+      const createdAtSort = r.createdAt
+        ? new Date(r.createdAt as string | Date).getTime()
+        : Date.now();
+      const card = {
         ...base,
         id: r.id,
         slug: r.slug,
@@ -312,8 +355,8 @@ export async function listProductCards(): Promise<ItemCardData[]> {
         salePriceRegular:
           r.salePriceRegular != null ? Number(r.salePriceRegular) : null,
         salesCount: Number(r.salesCount ?? base.salesCount ?? 0),
-      };
-      // DB prices always win over mock seed data
+        createdAtSort,
+      } as ItemCardData & { createdAtSort: number };
       for (const key of [...byKey.keys()]) {
         const existing = byKey.get(key);
         if (
@@ -375,7 +418,8 @@ export async function listProductCards(): Promise<ItemCardData[]> {
       regularPrice,
       extendedPrice,
       salePriceRegular: regularPrice === 0 ? undefined : salePriceRegular,
-    });
+      createdAtSort: (item as { createdAtSort?: number }).createdAtSort || 0,
+    } as ItemCardData);
   }
 
   for (const o of Object.values(overrides)) {
@@ -385,6 +429,7 @@ export async function listProductCards(): Promise<ItemCardData[]> {
     if (seen.has(id) || seen.has(slug)) continue;
     seen.add(id);
     const isFree = o.isFree === true || Number(o.regularPrice) === 0;
+    const createdAtSort = o.createdAt ? new Date(o.createdAt).getTime() : Date.now();
     out.push({
       id,
       slug,
@@ -402,8 +447,15 @@ export async function listProductCards(): Promise<ItemCardData[]> {
         name: o.categorySlug || "Code",
         slug: o.categorySlug || "code",
       },
-    });
+      createdAtSort,
+    } as ItemCardData);
   }
 
+  out.sort((a, b) => {
+    const ta = (a as { createdAtSort?: number }).createdAtSort || 0;
+    const tb = (b as { createdAtSort?: number }).createdAtSort || 0;
+    if (tb !== ta) return tb - ta;
+    return String(b.id).localeCompare(String(a.id));
+  });
   return out;
 }

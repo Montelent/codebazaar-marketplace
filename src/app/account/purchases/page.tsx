@@ -35,7 +35,7 @@ export default function PurchasesPage() {
       const res = await fetch(`/api/orders${q}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "Could not load purchases from database");
+        setError(data.error || "Could not load purchases");
         setItems([]);
         return;
       }
@@ -58,7 +58,7 @@ export default function PurchasesPage() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Purchases</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Orders stored in Neon — visible anywhere with the same email.
+        Your completed orders. Sign in with the same email used at checkout to see them on any device.
       </p>
 
       {!session?.user && (
@@ -94,10 +94,10 @@ export default function PurchasesPage() {
       )}
 
       {loading ? (
-        <p className="mt-8 text-sm text-slate-500">Loading from database…</p>
+        <p className="mt-8 text-sm text-slate-500">Loading…</p>
       ) : items.length === 0 ? (
         <div className="mt-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
-          <p className="text-sm text-slate-600">No purchases in the database yet.</p>
+          <p className="text-sm text-slate-600">No purchases yet.</p>
           <Link href="/" className="mt-3 inline-block text-sm font-medium text-emerald-600 hover:underline">
             Browse marketplace
           </Link>
@@ -107,7 +107,7 @@ export default function PurchasesPage() {
           {items.map((item) => (
             <li key={item.id} className="flex items-center gap-4 py-4">
               <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded bg-slate-100">
-                <Image src={item.thumbnailUrl} alt="" fill className="object-cover" />
+                <Image src={item.thumbnailUrl || "https://picsum.photos/seed/item/160/100"} alt="" fill className="object-cover" />
               </div>
               <div className="min-w-0 flex-1">
                 <Link

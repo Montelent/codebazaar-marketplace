@@ -2,7 +2,7 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { listProductCards, getOverrides } from "@/lib/product-store";
+import { getOverrides } from "@/lib/product-store";
 import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -21,30 +21,7 @@ type Row = {
 
 export default async function AdminProductsPage() {
   const overrides = await getOverrides().catch(() => ({} as Record<string, never>));
-  const bySlug = new Map<string, Row>();
-
-  try {
-    const cards = await listProductCards();
-    for (const c of cards) {
-      const o = overrides[c.id] || overrides[c.slug];
-      const regular = Number(c.regularPrice);
-      const isFree = regular <= 0 || o?.isFree === true;
-      bySlug.set(c.slug, {
-        id: c.id,
-        slug: c.slug,
-        title: (o && o.title) || c.title,
-        regularPrice: isFree ? 0 : regular,
-        extendedPrice: isFree
-          ? 0
-          : Number(o?.extendedPrice != null ? o.extendedPrice : c.extendedPrice),
-        categoryName: c.category?.name || "—",
-        status: "APPROVED",
-        isFree,
-      });
-    }
-  } catch {
-    /* ignore */
-  }
+  let rows: Row[] = [];
 
   try {
     const { rows: dbRows } = await query<{
@@ -60,10 +37,10 @@ export default async function AdminProductsPage() {
              i.status::text AS status, c.name AS "categoryName"
       FROM "Item" i
       LEFT JOIN "Category" c ON c.id = i."categoryId"
-      ORDER BY i."updatedAt" DESC
+      ORDER BY i."createdAt" DESC NULLS LAST
       LIMIT 300
     `);
-    for (const r of dbRows) {
+    rows = dbRows.map((r) => {
       const o = overrides[r.id] || overrides[r.slug];
       let regular = Number(r.regularPrice);
       let extended = Number(r.extendedPrice);
@@ -77,7 +54,7 @@ export default async function AdminProductsPage() {
         }
       }
       const isFree = regular <= 0;
-      bySlug.set(r.slug, {
+      return {
         id: r.id,
         slug: r.slug,
         title: (o && o.title) || r.title,
@@ -86,13 +63,11 @@ export default async function AdminProductsPage() {
         categoryName: r.categoryName || "—",
         status: r.status || "APPROVED",
         isFree,
-      });
-    }
+      };
+    });
   } catch {
-    /* ignore */
+    rows = [];
   }
-
-  const rows = Array.from(bySlug.values());
 
   return (
     <div className="space-y-6">
@@ -100,7 +75,7 @@ export default async function AdminProductsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Products</h1>
           <p className="text-sm text-slate-500">
-            Live prices from your database and saved edits (including Free).
+            Newest products appear first. Live prices from your database.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

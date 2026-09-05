@@ -1,7 +1,9 @@
 import { ItemGrid } from "@/components/items/item-grid";
-import { MOCK_ITEMS } from "@/lib/mock-data";
+import { listProductCards } from "@/lib/product-store";
 import Link from "next/link";
 import type { Metadata } from "next";
+
+export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ username: string }> };
 
@@ -15,20 +17,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function AuthorPage({ params }: Props) {
   const { username } = await params;
-  const items = MOCK_ITEMS.filter(
-    (i) => i.author.username.toLowerCase() === username.toLowerCase()
+  const all = await listProductCards().catch(() => []);
+  const display = all.filter(
+    (i) => (i.author?.username || "").toLowerCase() === username.toLowerCase()
   );
-  const display = items;
-  const totalSales = display.reduce((s, i) => s + i.salesCount, 0);
+  const totalSales = display.reduce((s, i) => s + (i.salesCount || 0), 0);
   const avgRating =
     display.length > 0
-      ? display.reduce((s, i) => s + i.ratingAvg, 0) / display.length
+      ? display.reduce((s, i) => s + (i.ratingAvg || 0), 0) / display.length
       : 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <nav className="mb-4 text-xs text-slate-500">
-        <Link href="/" className="hover:text-emerald-600">Home</Link>
+        <Link href="/" className="hover:text-emerald-600">
+          Home
+        </Link>
         <span className="mx-2">›</span>
         <span className="text-slate-800">Author</span>
         <span className="mx-2">›</span>
@@ -48,17 +52,27 @@ export default async function AuthorPage({ params }: Props) {
               </span>
             </div>
             <p className="text-sm text-slate-500">
-              Member on CodeBazaar · {display.length} item{display.length === 1 ? "" : "s"}
-            </p>
-            <p className="mt-2 max-w-xl text-sm text-slate-600">
-              Independent creator shipping quality digital products on CodeBazaar.
+              Member on CodeBazaar · {display.length} item
+              {display.length === 1 ? "" : "s"}
             </p>
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-6 text-sm">
-          <div><span className="font-bold text-slate-900">{display.length}</span> items</div>
-          <div><span className="font-bold text-slate-900">{avgRating ? avgRating.toFixed(1) : "—"}</span> avg rating</div>
-          <div><span className="font-bold text-slate-900">{totalSales > 0 ? `${(totalSales / 1000).toFixed(1)}K+` : "0"}</span> sales</div>
+          <div>
+            <span className="font-bold text-slate-900">{display.length}</span> items
+          </div>
+          <div>
+            <span className="font-bold text-slate-900">
+              {avgRating ? avgRating.toFixed(1) : "—"}
+            </span>{" "}
+            avg rating
+          </div>
+          <div>
+            <span className="font-bold text-slate-900">
+              {totalSales > 0 ? totalSales.toLocaleString() : "0"}
+            </span>{" "}
+            sales
+          </div>
         </div>
       </div>
 
@@ -72,7 +86,9 @@ export default async function AuthorPage({ params }: Props) {
       )}
 
       <p className="mt-8">
-        <Link href="/" className="text-emerald-600 hover:underline">← Back to marketplace</Link>
+        <Link href="/" className="text-emerald-600 hover:underline">
+          ← Back to marketplace
+        </Link>
       </p>
     </div>
   );

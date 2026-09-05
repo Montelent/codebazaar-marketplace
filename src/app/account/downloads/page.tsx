@@ -36,7 +36,7 @@ export default function DownloadsPage() {
       const res = await fetch(`/api/orders${q}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "Could not load downloads from database");
+        setError(data.error || "Could not load downloads");
         setItems([]);
         return;
       }
@@ -69,7 +69,7 @@ export default function DownloadsPage() {
         const data = await res.json().catch(() => ({}));
         setDlError(
           data.error ||
-            "No download file URL on this product. Set Main download file URL in Admin → Products → Edit, then Save."
+            "No download file is set for this product. Ask the seller to add a Main download file URL."
         );
         return;
       }
@@ -89,7 +89,7 @@ export default function DownloadsPage() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Downloads</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Your purchased files. Download opens the main file URL set on each product in Admin.
+        Your purchased files. Download uses the main file URL set on each product.
       </p>
 
       {!session?.user && (
@@ -132,7 +132,7 @@ export default function DownloadsPage() {
         <p className="mt-6 text-sm text-slate-500">Loading…</p>
       ) : items.length === 0 ? (
         <div className="mt-6 rounded-lg border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
-          No downloads in the database yet. Complete checkout with your email first.
+          No downloads yet. Complete a purchase first, then return here to get your files.
         </div>
       ) : (
         <ul className="mt-6 space-y-3">

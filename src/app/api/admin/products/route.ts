@@ -2,7 +2,6 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
-import { MOCK_ITEMS } from "@/lib/mock-data";
 import { z } from "zod";
 import { saveOverride } from "@/lib/product-store";
 
@@ -57,32 +56,19 @@ export async function GET() {
       FROM "Item" i
       LEFT JOIN "Category" c ON c.id = i."categoryId"
       LEFT JOIN "User" u ON u.id = i."authorId"
-      ORDER BY i."updatedAt" DESC
+      ORDER BY i."createdAt" DESC NULLS LAST
       LIMIT 200
       `
     );
-    if (rows.length === 0) return NextResponse.json({ source: "mock", items: MOCK_ITEMS });
     return NextResponse.json({ source: "db", items: rows });
-  } catch {
-    return NextResponse.json({ source: "mock", items: MOCK_ITEMS });
+  } catch (e) {
+    return NextResponse.json({
+      source: "db",
+      items: [],
+      error: e instanceof Error ? e.message : "error",
+    });
   }
 }
-
-const productSchema = z.object({
-  title: z.string().min(2).max(200),
-  slug: z.string().min(1).max(120),
-  description: z.string().optional().default(""),
-  regularPrice: z.number().min(0),
-  extendedPrice: z.number().min(0),
-  salePriceRegular: z.number().min(0).nullable().optional(),
-  categorySlug: z.string().optional(),
-  thumbnailUrl: z.string().optional(),
-  demoUrl: z.string().optional(),
-  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
-  isFree: z.boolean().optional(),
-  features: z.array(z.string()).optional(),
-  tags: z.array(z.string()).optional(),
-});
 
 export async function POST(req: Request) {
   const session = await requireAdmin();

@@ -163,7 +163,6 @@ export async function getProductDetail(
   slug?: string
 ): Promise<ProductDetail | null> {
   const overrides = await getOverrides();
-  // Never fall back to an unrelated mock product (avoids flash of wrong item)
   const card = MOCK_ITEMS.find(
     (i) => i.id === id || i.slug === slug || i.slug === id || i.id === slug
   );
@@ -296,12 +295,7 @@ export async function getProductDetail(
 export async function listProductCards(): Promise<ItemCardData[]> {
   const overrides = await getOverrides();
   const byKey = new Map<string, ItemCardData>();
-
-  for (const item of MOCK_ITEMS) {
-    const m = { ...item, createdAtSort: 0 } as ItemCardData & { createdAtSort: number };
-    byKey.set(item.id, m);
-    byKey.set(item.slug, m);
-  }
+  let hasDb = false;
 
   try {
     const { rows } = await query<{
@@ -323,23 +317,20 @@ export async function listProductCards(): Promise<ItemCardData[]> {
        LIMIT 500`
     );
     for (const r of rows) {
-      const base =
-        byKey.get(r.id) ||
-        byKey.get(r.slug) ||
-        ({
-          id: r.id,
-          slug: r.slug,
-          title: r.title,
-          thumbnailUrl:
-            r.thumbnailUrl || "https://picsum.photos/seed/" + r.slug + "/640/400",
-          regularPrice: 0,
-          extendedPrice: 0,
-          ratingAvg: 0,
-          ratingCount: 0,
-          salesCount: 0,
-          author: { username: "codebazaar", avatarUrl: null },
-          category: { name: "Code", slug: "code" },
-        } as ItemCardData);
+      const base = {
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        thumbnailUrl:
+          r.thumbnailUrl || "https://picsum.photos/seed/" + r.slug + "/640/400",
+        regularPrice: 0,
+        extendedPrice: 0,
+        ratingAvg: 0,
+        ratingCount: 0,
+        salesCount: 0,
+        author: { username: "codebazaar", avatarUrl: null },
+        category: { name: "Code", slug: "code" },
+      } as ItemCardData;
 
       const createdAtSort = r.createdAt
         ? new Date(r.createdAt as string | Date).getTime()
@@ -354,26 +345,25 @@ export async function listProductCards(): Promise<ItemCardData[]> {
         extendedPrice: Number(r.extendedPrice),
         salePriceRegular:
           r.salePriceRegular != null ? Number(r.salePriceRegular) : null,
-        salesCount: Number(r.salesCount ?? base.salesCount ?? 0),
+        salesCount: Number(r.salesCount ?? 0),
         createdAtSort,
       } as ItemCardData & { createdAtSort: number };
-      for (const key of [...byKey.keys()]) {
-        const existing = byKey.get(key);
-        if (
-          existing &&
-          (existing.id === r.id ||
-            existing.slug === r.slug ||
-            existing.id === r.slug ||
-            existing.slug === r.id)
-        ) {
-          byKey.delete(key);
-        }
-      }
       byKey.set(r.id, card);
       byKey.set(r.slug, card);
+      hasDb = true;
     }
   } catch {
-    /* keep mocks as fallback only */
+    /* DB unavailable */
+  }
+
+  if (!hasDb) {
+    for (const item of MOCK_ITEMS) {
+      const m = { ...item, createdAtSort: 0 } as ItemCardData & {
+        createdAtSort: number;
+      };
+      byKey.set(item.id, m);
+      byKey.set(item.slug, m);
+    }
   }
 
   const seen = new Set<string>();

@@ -121,52 +121,42 @@ export const PRODUCT_DETAILS: Record<string, ProductDetail> = {
   },
 };
 
-/** Fallback when a mock card has no rich detail entry */
+/** Fallback — empty requirements/attributes so new products do not inherit mock Version/Requirements */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function detailFromCard(item: any): ProductDetail {
+  const username = item.author?.username || item.author?.displayName || "codebazaar";
   return {
-    id: item.id,
-    slug: item.slug,
-    title: item.title,
-    thumbnailUrl: item.thumbnailUrl,
-    galleryUrls: [item.thumbnailUrl],
-    demoUrl: item.demoUrl,
-    regularPrice: Number(item.regularPrice),
-    extendedPrice: Number(item.extendedPrice),
+    id: String(item.id || ""),
+    slug: String(item.slug || ""),
+    title: String(item.title || "Untitled"),
+    descriptionHtml: String(item.descriptionHtml || item.description || ""),
+    regularPrice: Number(item.regularPrice || 0),
+    extendedPrice: Number(item.extendedPrice || item.regularPrice || 0),
     salePriceRegular: item.salePriceRegular != null ? Number(item.salePriceRegular) : null,
     salePriceExtended: item.salePriceExtended != null ? Number(item.salePriceExtended) : null,
-    ratingAvg: item.ratingAvg,
-    ratingCount: item.ratingCount,
-    salesCount: item.salesCount,
-    version: item.version || "1.0.0",
-    descriptionHtml: `<p>${item.description || item.title}</p>`,
+    thumbnailUrl:
+      item.thumbnailUrl ||
+      "https://picsum.photos/seed/" + (item.slug || "item") + "/640/400",
+    demoUrl: item.demoUrl || undefined,
+    galleryUrls: Array.isArray(item.galleryUrls) ? item.galleryUrls : [],
     features: Array.isArray(item.features) ? item.features : [],
-    requirements: ["See documentation"],
-    changelogs: [{ version: "1.0.0", items: ["Initial release"] }],
-    licenseFeatures: [
-      "Quality checked by CodeBazaar",
-      "Future updates",
-      "6 months support from author",
-    ],
-    attributes: [
-      { label: "Last Update", value: "Recently" },
-      { label: "Created", value: "—" },
-      { label: "Tags", value: item.category?.name || "" },
-    ],
-    tags: [item.category?.slug || "code"],
+    requirements: Array.isArray(item.requirements) ? item.requirements : [],
+    changelogs: Array.isArray(item.changelogs) ? item.changelogs : [],
+    licenseFeatures: Array.isArray(item.licenseFeatures) ? item.licenseFeatures : [],
+    attributes: Array.isArray(item.attributes) ? item.attributes : [],
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    category: item.category || { name: "Code", slug: "code" },
     author: {
-      username: item.author.username,
-      displayName: item.author.username,
-      avatarUrl: item.author.avatarUrl,
-      isElite: true,
+      username,
+      displayName: item.author?.displayName || username,
+      avatarUrl: item.author?.avatarUrl ?? null,
+      isElite: Boolean(item.author?.isElite),
     },
-    category: {
-      name: item.category.name,
-      slug: item.category.slug,
-      parentName: "Code",
-      parentSlug: "code",
-    },
-    lastUpdate: "Recently",
-    createdAt: "—",
+    ratingAvg: Number(item.ratingAvg || 0),
+    ratingCount: Number(item.ratingCount || 0),
+    salesCount: Number(item.salesCount || 0),
+    version: String(item.version || "1.0.0"),
+    lastUpdate: item.lastUpdate || "—",
+    createdAt: item.createdAt || "—",
   };
 }
